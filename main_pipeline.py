@@ -1,10 +1,13 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import datasets
 from torchvision import transforms
-from torch.utils.data.sampler import SubsetRandomSampler
+from tqdm import tqdm
 
+from proxssi.groups import resnet_groups
+from src.model import ResNet, ResidualBlock
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -72,105 +75,41 @@ def data_loader(data_dir,
     return (train_loader, valid_loader)
 
 
+batch_size = 128
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
-                                         batch_size=64)
+                                         batch_size=batch_size)
 
 test_loader = data_loader(data_dir='./data',
-                          batch_size=64,
+                          batch_size=batch_size,
                           test=True)
-
-
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU())
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(out_channels))
-        self.downsample = downsample
-        self.relu = nn.ReLU()
-        self.out_channels = out_channels
-
-    def forward(self, x):
-        residual = x
-        out = self.conv1(x)
-        out = self.conv2(out)
-        if self.downsample:
-            residual = self.downsample(x)
-        out += residual
-        out = self.relu(out)
-        return out
-
-
-class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=10):
-        super(ResNet, self).__init__()
-        self.inplanes = 64
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
-            nn.BatchNorm2d(64),
-            nn.ReLU())
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer0 = self._make_layer(block, 64, layers[0], stride=1)
-        self.layer1 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer2 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer3 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AvgPool2d(7, stride=1)
-        self.fc = nn.Linear(512, num_classes)
-
-    def _make_layer(self, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(planes),
-            )
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes
-        for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.maxpool(x)
-        x = self.layer0(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
 num_classes = 10
-num_epochs = 20
-batch_size = 16
-learning_rate = 0.01
+num_epochs = 50
+learning_rate = 1e-3
+weight_decay = 0.001
+
+
+class Arguments:
+    learning_rate: float = learning_rate
+    weight_decay: float = weight_decay
+
 
 model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
 
+# resnet_groups_optimizer = resnet_groups(model, Arguments)
+
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay = 0.001, momentum = 0.9)
+# optimizer = torch.optim.SGD(resnet_groups_optimizer, lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
 
 # Train the model
 total_step = len(train_loader)
 
 import gc
 
-total_step = len(train_loader)
-
 for epoch in range(num_epochs):
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, labels) in enumerate(tqdm(train_loader, desc="training")):
         # Move tensors to the configured device
         images = images.to(device)
         labels = labels.to(device)
@@ -202,8 +141,9 @@ for epoch in range(num_epochs):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             del images, labels, outputs
-
-        print('Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * correct / total))
+        acc = correct / total
+        print('Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc))
+    torch.save(model.state_dict(), f"/home/kirrog/projects/FQWB/model/ep_{epoch:03d}_acc_{acc:04f}.bin")
 
 with torch.no_grad():
     correct = 0
@@ -216,6 +156,6 @@ with torch.no_grad():
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
         del images, labels, outputs
-
-    print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * correct / total))
-
+    acc = correct / total
+    print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
+    torch.save(model.state_dict(), f"/home/kirrog/projects/FQWB/model/result_acc_{acc:04f}.bin")
