@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,7 +7,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import datasets
 from torchvision import transforms
 from tqdm import tqdm
-
+import gc
 from proxssi.groups import resnet_groups
 from src.model import ResNet, ResidualBlock
 
@@ -75,7 +77,7 @@ def data_loader(data_dir,
     return (train_loader, valid_loader)
 
 
-batch_size = 128
+batch_size = 144
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
@@ -83,10 +85,11 @@ train_loader, valid_loader = data_loader(data_dir='./data',
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
+iter_range = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4]
 num_classes = 10
 num_epochs = 50
 learning_rate = 1e-3
-weight_decay = 0.001
+weight_decay = 1e-8
 
 
 class Arguments:
@@ -94,46 +97,68 @@ class Arguments:
     weight_decay: float = weight_decay
 
 
-model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
+for i in range(len(iter_range) - 1):
+    weight_coef_l1 = iter_range[i + 1]
+    weight_coef_l2 = iter_range[i]
+    model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
 
-# resnet_groups_optimizer = resnet_groups(model, Arguments)
+    # resnet_groups_optimizer = resnet_groups(model, Arguments)
 
-# Loss and optimizer
-criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.SGD(resnet_groups_optimizer, lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.SGD(resnet_groups_optimizer, lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9)
 
-# Train the model
-total_step = len(train_loader)
+    # Train the model
+    total_step = len(train_loader)
 
-import gc
+    experiment = f"l1_{weight_coef_l1}_l2_{weight_coef_l2}_wd_{weight_decay}"
+    experiment_path = Path(f"/home/kirrog/projects/FQWB/model/{experiment}")
+    experiment_path.mkdir(exist_ok=True, parents=True)
+    for epoch in range(num_epochs):
+        for i, (images, labels) in enumerate(tqdm(train_loader, desc="training")):
+            # Move tensors to the configured device
+            images = images.to(device)
+            labels = labels.to(device)
 
-for epoch in range(num_epochs):
-    for i, (images, labels) in enumerate(tqdm(train_loader, desc="training")):
-        # Move tensors to the configured device
-        images = images.to(device)
-        labels = labels.to(device)
+            # Forward pass
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            for param in model.parameters():
+                loss += torch.sum(param) * weight_coef_l1
+                loss += torch.sum(param ** 2) * weight_coef_l2
 
-        # Forward pass
-        outputs = model(images)
-        loss = criterion(outputs, labels)
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            del images, labels, outputs
+            torch.cuda.empty_cache()
+            gc.collect()
 
-        # Backward and optimize
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        del images, labels, outputs
-        torch.cuda.empty_cache()
-        gc.collect()
+        print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f} '
+              f'Weight value: {sum([float(torch.sum(x)) for x in model.parameters()]):0.4f}')
 
-    print('Epoch [{}/{}], Loss: {:.4f}'
-          .format(epoch + 1, num_epochs, loss.item()))
+        # Validation
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for images, labels in valid_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+                del images, labels, outputs
+            acc = correct / total
+            print('Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc))
+        torch.save(model.state_dict(), str(experiment_path / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
 
-    # Validation
     with torch.no_grad():
         correct = 0
         total = 0
-        for images, labels in valid_loader:
+        for images, labels in test_loader:
             images = images.to(device)
             labels = labels.to(device)
             outputs = model(images)
@@ -142,20 +167,8 @@ for epoch in range(num_epochs):
             correct += (predicted == labels).sum().item()
             del images, labels, outputs
         acc = correct / total
-        print('Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc))
-    torch.save(model.state_dict(), f"/home/kirrog/projects/FQWB/model/ep_{epoch:03d}_acc_{acc:04f}.bin")
-
-with torch.no_grad():
-    correct = 0
-    total = 0
-    for images, labels in test_loader:
-        images = images.to(device)
-        labels = labels.to(device)
-        outputs = model(images)
-        _, predicted = torch.max(outputs.data, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-        del images, labels, outputs
-    acc = correct / total
-    print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
-    torch.save(model.state_dict(), f"/home/kirrog/projects/FQWB/model/result_acc_{acc:04f}.bin")
+        print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
+        torch.save(model.state_dict(), str(experiment_path / f"result_acc_{acc:04f}.bin"))
+    del model
+    torch.cuda.empty_cache()
+    gc.collect()
