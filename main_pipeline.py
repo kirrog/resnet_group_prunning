@@ -125,7 +125,7 @@ for i in range(len(iter_range) - 1):
             outputs = model(images)
             loss = criterion(outputs, labels)
             for param in model.parameters():
-                loss += torch.sum(param) * weight_coef_l1
+                loss += torch.sum(torch.abs(param)) * weight_coef_l1
                 loss += torch.sum(param ** 2) * weight_coef_l2
 
             # Backward and optimize

@@ -1,3 +1,6 @@
+from functools import reduce
+
+import torch
 import torch.nn as nn
 
 
@@ -70,3 +73,26 @@ class ResNet(nn.Module):
         x = self.fc(x)
 
         return x
+
+    def calc_weights(self, seq):
+        return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in
+                    list(seq.parameters())])
+
+    def recreate_layer(self, layer_seq, threshold: float):
+        layers = []
+        for seq in layer_seq:
+            c1l = self.calc_weights(seq.conv1[0])
+            c1b = self.calc_weights(seq.conv1[1])
+            c2l = self.calc_weights(seq.conv2[0])
+            c2b = self.calc_weights(seq.conv2[1])
+            sum_all = c1l + c1b + c2l + c2b
+            print(f"All: {sum_all} c1l: {c1l} c1b: {c1b} c2l: {c2l} c2b: {c2b}")
+            if sum_all > threshold:
+                layers.append(seq)
+        return nn.Sequential(*layers)
+
+    def recreation(self, threshold: float):
+        self.layer0 = self.recreate_layer(self.layer0, threshold)
+        self.layer1 = self.recreate_layer(self.layer1, threshold)
+        self.layer2 = self.recreate_layer(self.layer2, threshold)
+        self.layer3 = self.recreate_layer(self.layer3, threshold)
