@@ -1,8 +1,11 @@
+from multiprocessing import Pool
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import datasets
 from torchvision import transforms
@@ -13,6 +16,32 @@ from src.model import ResNet, ResidualBlock
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+@torch.jit.script
+def l1_l2_loss(param, wcl1, wcl2):
+    res = torch.sum(torch.abs(param)) * wcl1
+    res += torch.sum(param ** 2) * wcl2
+    return res
+
+
+@torch.jit.script
+def l1_l2_loss_biased(param, wcl1, wcl2):
+    param_biased = param - 1.0
+    res = torch.sum(torch.abs(param_biased)) * wcl1
+    res += torch.sum(param_biased ** 2) * wcl2
+    return res
+
+
+@torch.jit.script
+def regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, wcl1, wcl2):
+    res = torch.zeros((1)).cuda()
+    for i in range(weights.size()[0]):
+        res += l1_l2_loss(weights[i], wcl1, wcl2)
+        res += l1_l2_loss(bias[i], wcl1, wcl2)
+        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
+        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+    return torch.sum(res)
 
 
 def data_loader(data_dir,
@@ -77,7 +106,7 @@ def data_loader(data_dir,
     return (train_loader, valid_loader)
 
 
-batch_size = 144
+batch_size = 208
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
@@ -98,11 +127,9 @@ class Arguments:
 
 
 for i in range(len(iter_range) - 1):
-    weight_coef_l1 = iter_range[i + 1]
-    weight_coef_l2 = iter_range[i]
+    weight_coef_l1 = torch.as_tensor(iter_range[i + 1]).to(device)
+    weight_coef_l2 = torch.as_tensor(iter_range[i]).to(device)
     model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
-
-    # resnet_groups_optimizer = resnet_groups(model, Arguments)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -113,8 +140,19 @@ for i in range(len(iter_range) - 1):
     total_step = len(train_loader)
 
     experiment = f"l1_{weight_coef_l1}_l2_{weight_coef_l2}_wd_{weight_decay}"
-    experiment_path = Path(f"/home/kirrog/projects/FQWB/model/{experiment}")
+    experiment_path = Path(f"/home/kirrog/projects/FQWB/model/unique_feature/{experiment}")
     experiment_path.mkdir(exist_ok=True, parents=True)
+    l = 0
+    elems = []
+    last_elem = []
+    for param in model.parameters():
+        if l % 4 == 0:
+            last_elem = []
+        last_elem.append(param)
+        if l % 4 == 3:
+            elems.append(last_elem)
+        l += 1
+
     for epoch in range(num_epochs):
         for i, (images, labels) in enumerate(tqdm(train_loader, desc="training")):
             # Move tensors to the configured device
@@ -124,10 +162,11 @@ for i in range(len(iter_range) - 1):
             # Forward pass
             outputs = model(images)
             loss = criterion(outputs, labels)
-            for param in model.parameters():
-                loss += torch.sum(torch.abs(param)) * weight_coef_l1
-                loss += torch.sum(param ** 2) * weight_coef_l2
 
+            for params in elems:
+                weights, bias, norm_coef, norm_bias = params
+                loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
+                                                         weight_coef_l2)
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
