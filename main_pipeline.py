@@ -139,7 +139,7 @@ for i in range(len(iter_range) - 1):
     # Train the model
     total_step = len(train_loader)
 
-    experiment = f"l1_{weight_coef_l1}_l2_{weight_coef_l2}_wd_{weight_decay}"
+    experiment = f"l1_{iter_range[i + 1]}_l2_{iter_range[i]}_wd_{weight_decay}"
     experiment_path = Path(f"/home/kirrog/projects/FQWB/model/unique_feature/{experiment}")
     experiment_path.mkdir(exist_ok=True, parents=True)
     l = 0
@@ -174,9 +174,8 @@ for i in range(len(iter_range) - 1):
             del images, labels, outputs
             torch.cuda.empty_cache()
             gc.collect()
-
-        print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f} '
-              f'Weight value: {sum([float(torch.sum(x)) for x in model.parameters()]):0.4f}')
+        ep = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f} Weight value: {sum([float(torch.sum(x)) for x in model.parameters()]):0.4f}'
+        print(ep)
 
         # Validation
         with torch.no_grad():
@@ -191,7 +190,11 @@ for i in range(len(iter_range) - 1):
                 correct += (predicted == labels).sum().item()
                 del images, labels, outputs
             acc = correct / total
-            print('Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc))
+            ac = 'Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc)
+            print(ac)
+        with open(str(experiment_path / "stats.txt"), "a") as f:
+            f.write(f"{ep}\n")
+            f.write(f"{ac}\n")
         torch.save(model.state_dict(), str(experiment_path / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
 
     with torch.no_grad():
