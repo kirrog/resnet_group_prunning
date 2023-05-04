@@ -1,3 +1,4 @@
+import json
 from functools import reduce
 
 import torch
@@ -5,14 +6,16 @@ import torch.nn as nn
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None, middle_channels=None):
         super(ResidualBlock, self).__init__()
+        if middle_channels is None:
+            middle_channels = out_channels
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1),
-            nn.BatchNorm2d(out_channels),
+            nn.Conv2d(in_channels, middle_channels, kernel_size=3, stride=stride, padding=1),
+            nn.BatchNorm2d(middle_channels),
             nn.ReLU())
         self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(middle_channels, out_channels, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(out_channels))
         self.downsample = downsample
         self.relu = nn.ReLU()
@@ -74,25 +77,62 @@ class ResNet(nn.Module):
 
         return x
 
-    def calc_weights(self, seq):
-        return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in
-                    list(seq.parameters())])
+    def calc_length(self, x):
+        return reduce(lambda a, b: a * b, x.size())
 
     def recreate_layer(self, layer_seq, threshold: float):
-        layers = []
-        for seq in layer_seq:
-            c1l = self.calc_weights(seq.conv1[0])
-            c1b = self.calc_weights(seq.conv1[1])
-            c2l = self.calc_weights(seq.conv2[0])
-            c2b = self.calc_weights(seq.conv2[1])
-            sum_all = c1l + c1b + c2l + c2b
-            print(f"All: {sum_all} c1l: {c1l} c1b: {c1b} c2l: {c2l} c2b: {c2b}")
-            if sum_all > threshold:
-                layers.append(seq)
+        layers = [layer_seq[0]]
+        layers_features = []
+        for seq in layer_seq[1:]:
+            input_conv_weight = seq.conv1[0].weight
+            input_conv_bias = seq.conv1[0].bias
+            input_norm_weight = seq.conv1[1].weight
+            input_norm_bias = seq.conv1[1].bias
+            output_conv_weight = seq.conv2[0].weight
+            saved_features = []
+            all_features = []
+            for i in range(seq.conv1[0].weight.size()[0]):
+                icw = torch.sum(torch.abs(input_conv_weight[i])) / self.calc_length(input_conv_weight[i])
+                icb = torch.sum(torch.abs(input_conv_bias[i])) / self.calc_length(input_conv_weight[i])
+                inw = torch.sum(torch.abs(input_norm_weight[i] - 1.0)) / self.calc_length(input_conv_weight[i])
+                inb = torch.sum(torch.abs(input_norm_bias[i])) / self.calc_length(input_conv_weight[i])
+                ocw = torch.sum(torch.abs(output_conv_weight[:, i])) / self.calc_length(input_conv_weight[i])
+                value = icw + icb + inw + inb + ocw
+                all_features.append((i, float(value)))
+                if value > threshold:
+                    saved_features.append((i, value))
+            layers_features.append(all_features)
+            if len(saved_features) == 0:
+                continue
+            in_size = input_conv_weight.size()
+            out_size = output_conv_weight.size()
+            input_conv_weight_new = torch.zeros((len(saved_features), in_size[1], in_size[2], in_size[3]))
+            input_conv_bias_new = torch.zeros((len(saved_features)))
+            input_norm_weight_new = torch.zeros((len(saved_features)))
+            input_norm_bias_new = torch.zeros((len(saved_features)))
+            output_conv_weight_new = torch.zeros((out_size[0], len(saved_features), out_size[2], out_size[3]))
+            for j, pair in enumerate(saved_features):
+                i, _ = pair
+                input_conv_weight_new[j] = input_conv_weight[i]
+                input_conv_bias_new[j] = input_conv_bias[i]
+                input_norm_weight_new[j] = input_norm_weight[i]
+                input_norm_bias_new[j] = input_norm_bias[i]
+                output_conv_weight_new[:, j] = output_conv_weight[:, i]
+            res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
+            res_block.conv1[0].weight = nn.parameter.Parameter(input_conv_weight_new)
+            res_block.conv1[0].bias = nn.parameter.Parameter(input_conv_bias_new)
+            res_block.conv1[1].weight = nn.parameter.Parameter(input_norm_weight_new)
+            res_block.conv1[1].bias = nn.parameter.Parameter(input_norm_bias_new)
+            res_block.conv2[0].weight = nn.parameter.Parameter(output_conv_weight_new)
+            layers.append(res_block)
+        self.recration_features.append(layers_features)
         return nn.Sequential(*layers)
 
-    def recreation(self, threshold: float):
+    def recreation(self, threshold: float, path2dump_stats: str = "stat_dump.json"):
+        self.recration_features = []
         self.layer0 = self.recreate_layer(self.layer0, threshold)
         self.layer1 = self.recreate_layer(self.layer1, threshold)
         self.layer2 = self.recreate_layer(self.layer2, threshold)
         self.layer3 = self.recreate_layer(self.layer3, threshold)
+        with open(path2dump_stats, "w") as f:
+            json.dump(self.recration_features, f)
