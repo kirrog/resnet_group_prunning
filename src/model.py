@@ -42,11 +42,9 @@ class ResNet(nn.Module):
             nn.ReLU())
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer0 = self._make_layer(block, 64, layers[0], stride=1)
-        self.layer1 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer2 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer3 = self._make_layer(block, 512, layers[3], stride=2)
+        # self.layer1 = self._make_layer(block, 128, layers[1], stride=2)
         self.avgpool = nn.AvgPool2d(7, stride=1)
-        self.fc = nn.Linear(512, num_classes)
+        self.fc = nn.Linear(256, num_classes)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -67,9 +65,7 @@ class ResNet(nn.Module):
         x = self.conv1(x)
         x = self.maxpool(x)
         x = self.layer0(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
+        # x = self.layer1(x)
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -132,7 +128,5 @@ class ResNet(nn.Module):
         self.recration_features = []
         self.layer0 = self.recreate_layer(self.layer0, threshold)
         self.layer1 = self.recreate_layer(self.layer1, threshold)
-        self.layer2 = self.recreate_layer(self.layer2, threshold)
-        self.layer3 = self.recreate_layer(self.layer3, threshold)
         with open(path2dump_stats, "w") as f:
             json.dump(self.recration_features, f)

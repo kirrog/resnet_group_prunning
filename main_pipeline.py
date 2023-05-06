@@ -1,4 +1,5 @@
 import gc
+from functools import reduce
 from pathlib import Path
 
 import torch
@@ -27,22 +28,22 @@ def l1_l2_loss_biased(param, wcl1, wcl2):
     return res
 
 
-@torch.jit.script
+# @torch.jit.script
 def regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, wcl1, wcl2):
     res = torch.zeros((1)).cuda()
     for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2)
+        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
         res += l1_l2_loss(bias[i], wcl1, wcl2)
         res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
         res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
     return torch.sum(res)
 
 
-batch_size = 208
+batch_size = 512
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-
+experiment_name = "img_sized_reg_groups_9_blocks"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
@@ -55,7 +56,7 @@ weight_decay = 1e-8
 for i in range(len(iter_range) - 1):
     weight_coef_l1 = torch.as_tensor(iter_range[i + 1]).to(device)
     weight_coef_l2 = torch.as_tensor(iter_range[i]).to(device)
-    model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
+    model = ResNet(ResidualBlock, [9, 4, 6, 3]).to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -66,7 +67,7 @@ for i in range(len(iter_range) - 1):
     total_step = len(train_loader)
 
     experiment = f"l1_{iter_range[i + 1]}_l2_{iter_range[i]}_wd_{weight_decay}"
-    experiment_path = Path(f"/home/kirrog/projects/FQWB/model/unique_feature/{experiment}")
+    experiment_path = Path(f"/home/kirrog/projects/FQWB/model/{experiment_name}/{experiment}")
     experiment_path.mkdir(exist_ok=True, parents=True)
     l = 0
     elems = []
