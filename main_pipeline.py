@@ -16,7 +16,7 @@ batch_size = 256
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "5_blocks_and_maxpool"
+experiment_name = "aug_5_blocks_and_maxpool"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)

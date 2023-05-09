@@ -24,6 +24,13 @@ def data_loader(data_dir,
         normalize,
     ])
 
+    train_transform = transforms.Compose([
+        transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
     if test:
         dataset = datasets.CIFAR10(
             root=data_dir, train=False,
@@ -31,7 +38,7 @@ def data_loader(data_dir,
         )
 
         data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=shuffle
+            dataset, batch_size=batch_size, shuffle=shuffle, num_workers=16
         )
 
         return data_loader
@@ -39,12 +46,12 @@ def data_loader(data_dir,
     # load the dataset
     train_dataset = datasets.CIFAR10(
         root=data_dir, train=True,
-        download=True, transform=transform,
+        download=True, transform=train_transform,
     )
 
     valid_dataset = datasets.CIFAR10(
         root=data_dir, train=True,
-        download=True, transform=transform,
+        download=True, transform=train_transform,
     )
 
     num_train = len(train_dataset)
@@ -60,9 +67,9 @@ def data_loader(data_dir,
     valid_sampler = SubsetRandomSampler(valid_idx)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler)
+        train_dataset, batch_size=batch_size, sampler=train_sampler, num_workers=16)
 
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=batch_size, sampler=valid_sampler)
+        valid_dataset, batch_size=batch_size, sampler=valid_sampler, num_workers=16)
 
     return (train_loader, valid_loader)
