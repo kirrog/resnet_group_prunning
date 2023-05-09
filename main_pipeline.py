@@ -12,16 +12,16 @@ from validation import validate_model
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-batch_size = 256
+batch_size = 456
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "aug_4_block"
+experiment_name = "aug_4_block_reg"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
-# iter_range = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4]
-iter_range = [0, 0]
+iter_range = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4]
+# iter_range = [0, 0]
 num_classes = 10
 num_epochs = 50
 learning_rate = 1e-3
@@ -64,10 +64,10 @@ for i in range(len(iter_range) - 1):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-            # for params in elems:
-            #     weights, bias, norm_coef, norm_bias = params
-            #     loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
-            #                                              weight_coef_l2)
+            for params in elems:
+                weights, bias, norm_coef, norm_bias = params
+                loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
+                                                         weight_coef_l2)
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
