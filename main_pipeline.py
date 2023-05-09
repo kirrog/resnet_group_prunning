@@ -1,53 +1,27 @@
 import gc
-from functools import reduce
 from pathlib import Path
 
-import torch
 import torch.nn as nn
 from tqdm import tqdm
 
 from dataset_loader import data_loader
+from regularizations import *
 from src.model import ResNet, ResidualBlock
+from validation import validate_model
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-@torch.jit.script
-def l1_l2_loss(param, wcl1, wcl2):
-    res = torch.sum(torch.abs(param)) * wcl1
-    res += torch.sum(param ** 2) * wcl2
-    return res
-
-
-@torch.jit.script
-def l1_l2_loss_biased(param, wcl1, wcl2):
-    param_biased = param - 1.0
-    res = torch.sum(torch.abs(param_biased)) * wcl1
-    res += torch.sum(param_biased ** 2) * wcl2
-    return res
-
-
-# @torch.jit.script
-def regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, wcl1, wcl2):
-    res = torch.zeros((1)).cuda()
-    for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
-        res += l1_l2_loss(bias[i], wcl1, wcl2)
-        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
-        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
-    return torch.sum(res)
-
-
-batch_size = 512
+batch_size = 256
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "img_sized_reg_groups_3x64_4x128_blocks"
+experiment_name = "5_blocks_and_maxpool"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
-iter_range = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4]
+# iter_range = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4]
+iter_range = [0, 0]
 num_classes = 10
 num_epochs = 50
 learning_rate = 1e-3
@@ -90,10 +64,10 @@ for i in range(len(iter_range) - 1):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-            for params in elems:
-                weights, bias, norm_coef, norm_bias = params
-                loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
-                                                         weight_coef_l2)
+            # for params in elems:
+            #     weights, bias, norm_coef, norm_bias = params
+            #     loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
+            #                                              weight_coef_l2)
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
@@ -101,43 +75,23 @@ for i in range(len(iter_range) - 1):
             del images, labels, outputs
             torch.cuda.empty_cache()
             gc.collect()
-        ep = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f} Weight value: {sum([float(torch.sum(x)) for x in model.parameters()]):0.4f}'
+        ep = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f} ' \
+             f'Weight value: ' \
+             f'{calc_mean_weights(model):0.4f}'
         print(ep)
 
         # Validation
-        with torch.no_grad():
-            correct = 0
-            total = 0
-            for images, labels in valid_loader:
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-                del images, labels, outputs
-            acc = correct / total
-            ac = 'Accuracy of the network on the {} validation images: {} %'.format(5000, 100 * acc)
-            print(ac)
+        acc = validate_model(model, valid_loader, device)
+        ac = 'Accuracy of the network on the {} validation images: {} %'.format(len(valid_loader), 100 * acc)
+        print(ac)
         with open(str(experiment_path / "stats.txt"), "a") as f:
             f.write(f"{ep}\n")
             f.write(f"{ac}\n")
         torch.save(model.state_dict(), str(experiment_path / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
 
-    with torch.no_grad():
-        correct = 0
-        total = 0
-        for images, labels in test_loader:
-            images = images.to(device)
-            labels = labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            del images, labels, outputs
-        acc = correct / total
-        print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
-        torch.save(model.state_dict(), str(experiment_path / f"result_acc_{acc:04f}.bin"))
+    acc = validate_model(model, test_loader, device)
+    print('Accuracy of the network on the {} test images: {} %'.format(len(test_loader), 100 * acc))
+    torch.save(model.state_dict(), str(experiment_path / f"result_acc_{acc:04f}.bin"))
     del model
     torch.cuda.empty_cache()
     gc.collect()
