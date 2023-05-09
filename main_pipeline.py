@@ -16,7 +16,7 @@ batch_size = 256
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "aug_5_blocks_and_maxpool"
+experiment_name = "aug_4_block"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
@@ -30,7 +30,7 @@ weight_decay = 1e-8
 for i in range(len(iter_range) - 1):
     weight_coef_l1 = torch.as_tensor(iter_range[i + 1]).to(device)
     weight_coef_l2 = torch.as_tensor(iter_range[i]).to(device)
-    model = ResNet(ResidualBlock, [3, 4, 6, 3]).to(device)
+    model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
