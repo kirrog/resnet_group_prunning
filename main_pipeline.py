@@ -16,7 +16,7 @@ batch_size = 456
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "aug_4_block_reg"
+experiment_name = "aug_4_block_reg_block"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
@@ -66,8 +66,8 @@ for i in range(len(iter_range) - 1):
 
             for params in elems:
                 weights, bias, norm_coef, norm_bias = params
-                loss += regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
-                                                         weight_coef_l2)
+                loss += block_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
+                                                               weight_coef_l2)
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
@@ -82,7 +82,7 @@ for i in range(len(iter_range) - 1):
 
         # Validation
         acc = validate_model(model, valid_loader, device)
-        ac = 'Accuracy of the network on the {} validation images: {} %'.format(len(valid_loader), 100 * acc)
+        ac = 'Accuracy of the network on the {} validation batches: {} %'.format(len(valid_loader), 100 * acc)
         print(ac)
         with open(str(experiment_path / "stats.txt"), "a") as f:
             f.write(f"{ep}\n")
@@ -90,7 +90,7 @@ for i in range(len(iter_range) - 1):
         torch.save(model.state_dict(), str(experiment_path / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
 
     acc = validate_model(model, test_loader, device)
-    print('Accuracy of the network on the {} test images: {} %'.format(len(test_loader), 100 * acc))
+    print('Accuracy of the network on the {} test batches: {} %'.format(len(test_loader), 100 * acc))
     torch.save(model.state_dict(), str(experiment_path / f"result_acc_{acc:04f}.bin"))
     del model
     torch.cuda.empty_cache()
