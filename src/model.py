@@ -48,6 +48,7 @@ class ResNet(nn.Module):
         self.avgpool = nn.AvgPool2d(7)
         # self.fc = nn.Linear(4096, num_classes)
         self.fc = nn.Linear(512, num_classes)
+        self.num_classes = num_classes
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
