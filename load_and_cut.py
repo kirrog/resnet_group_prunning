@@ -9,11 +9,11 @@ from src.model import ResidualBlock, ResNet
 threshold = 0.00145
 experiment_num = 9
 find = True
-experiment_path = Path("/home/kirrog/projects/FQWB/model/unique_feature_threshold")
+experiment_path = Path("/home/kirrog/projects/FQWB/model/4_block_cut")
 experiment_path.mkdir(parents=True, exist_ok=True)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-MODEL_PATH_IN = "/home/kirrog/projects/FQWB/model/unique_feature/l1_1e-09_l2_1e-10_wd_1e-08/ep_029_acc_0.814800.bin"
-model = ResNet(ResidualBlock, [3, 4, 6, 3])
+MODEL_PATH_IN = "/home/kirrog/projects/FQWB/model/aug_4_block_reg_group/l1_0.0001_l2_1e-05_wd_1e-08/result_acc_0.807900.bin"
+model = ResNet(ResidualBlock, [3, 1, 1, 3])
 model.load_state_dict(torch.load(MODEL_PATH_IN))
 model.eval()
 model = model.cuda()
@@ -35,6 +35,7 @@ with torch.no_grad():
         del images, labels, outputs
     acc = correct / total
     print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
+model = model.cpu()
 model.recreation(threshold)
 model.eval()
 model = model.cuda()

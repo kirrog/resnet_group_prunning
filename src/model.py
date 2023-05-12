@@ -107,31 +107,41 @@ class ResNet(nn.Module):
                 continue
             in_size = input_conv_weight.size()
             out_size = output_conv_weight.size()
-            input_conv_weight_new = torch.zeros((len(saved_features), in_size[1], in_size[2], in_size[3]))
-            input_conv_bias_new = torch.zeros((len(saved_features)))
-            input_norm_weight_new = torch.zeros((len(saved_features)))
-            input_norm_bias_new = torch.zeros((len(saved_features)))
-            output_conv_weight_new = torch.zeros((out_size[0], len(saved_features), out_size[2], out_size[3]))
+            input_conv_weight_new = nn.parameter.Parameter(
+                torch.zeros((len(saved_features), in_size[1], in_size[2], in_size[3])))
+            input_conv_bias_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
+            input_norm_weight_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
+            input_norm_bias_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
+            output_conv_weight_new = nn.parameter.Parameter(
+                torch.zeros((out_size[0], len(saved_features), out_size[2], out_size[3])))
             for j, pair in enumerate(saved_features):
                 i, _ = pair
-                input_conv_weight_new[j] = input_conv_weight[i]
-                input_conv_bias_new[j] = input_conv_bias[i]
-                input_norm_weight_new[j] = input_norm_weight[i]
-                input_norm_bias_new[j] = input_norm_bias[i]
-                output_conv_weight_new[:, j] = output_conv_weight[:, i]
+                input_conv_weight_new[j] = input_conv_weight.data[i]
+                input_conv_bias_new[j] = input_conv_bias.data[i]
+                input_norm_weight_new[j] = input_norm_weight.data[i]
+                input_norm_bias_new[j] = input_norm_bias.data[i]
+                output_conv_weight_new[:, j] = output_conv_weight.data[:, i]
             res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
-            res_block.conv1[0].weight = nn.parameter.Parameter(input_conv_weight_new)
-            res_block.conv1[0].bias = nn.parameter.Parameter(input_conv_bias_new)
-            res_block.conv1[1].weight = nn.parameter.Parameter(input_norm_weight_new)
-            res_block.conv1[1].bias = nn.parameter.Parameter(input_norm_bias_new)
-            res_block.conv2[0].weight = nn.parameter.Parameter(output_conv_weight_new)
+            res_block.conv1[0].weight = input_conv_weight_new
+            res_block.conv1[0].bias = input_conv_bias_new
+            res_block.conv1[1].weight = input_norm_weight_new
+            res_block.conv1[1].bias = input_norm_bias_new
+            res_block.conv2[0].weight = output_conv_weight_new
+            example = torch.rand((1, 64, 32, 32))
+            orig_res = seq(example)
+            new_res = res_block(example)
+            compare = torch.sum(torch.abs(orig_res - new_res))
+            print(compare)
             layers.append(res_block)
         self.recration_features.append(layers_features)
         return nn.Sequential(*layers)
 
     def recreation(self, threshold: float, path2dump_stats: str = "stat_dump.json"):
         self.recration_features = []
-        self.layer0 = self.recreate_layer(self.layer0, threshold)
-        self.layer1 = self.recreate_layer(self.layer1, threshold)
-        with open(path2dump_stats, "w") as f:
+        with torch.no_grad():
+            self.layer0 = self.recreate_layer(self.layer0, threshold)
+            self.layer1 = self.recreate_layer(self.layer1, threshold)
+            self.layer2 = self.recreate_layer(self.layer2, threshold)
+            self.layer3 = self.recreate_layer(self.layer3, threshold)
+        with open(path2dump_stats[:-5] + str(threshold) + ".json", "w") as f:
             json.dump(self.recration_features, f)
