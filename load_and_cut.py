@@ -36,7 +36,7 @@ with torch.no_grad():
     acc = correct / total
     print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
 model = model.cpu()
-model.recreation(threshold)
+model.recreation_with_filter_regularization(threshold)
 model.eval()
 model = model.cuda()
 # summary(model, (3, 224, 224))
