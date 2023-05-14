@@ -6,7 +6,7 @@ import torch
 from dataset_loader import data_loader
 from src.model import ResidualBlock, ResNet
 
-threshold = 0.00145
+threshold = 0.02
 experiment_num = 9
 find = True
 experiment_path = Path("/home/kirrog/projects/FQWB/model/4_block_cut")

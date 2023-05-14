@@ -24,11 +24,15 @@ class ResidualBlock(nn.Module):
     def forward(self, x):
         residual = x
         out = self.conv1(x)
+        # print(torch.mean(out))
         out = self.conv2(out)
+        # print(torch.mean(out))
         if self.downsample:
             residual = self.downsample(x)
         out += residual
+        # print(torch.mean(out))
         out = self.relu(out)
+        # print(torch.mean(out))
         return out
 
 
@@ -89,6 +93,8 @@ class ResNet(nn.Module):
             input_conv_bias = seq.conv1[0].bias
             input_norm_weight = seq.conv1[1].weight
             input_norm_bias = seq.conv1[1].bias
+            input_norm_running_var = seq.conv1[1].running_var
+            input_norm_running_mean = seq.conv1[1].running_mean
             output_conv_weight = seq.conv2[0].weight
             saved_features = []
             all_features = []
@@ -107,31 +113,72 @@ class ResNet(nn.Module):
                 continue
             in_size = input_conv_weight.size()
             out_size = output_conv_weight.size()
-            input_conv_weight_new = nn.parameter.Parameter(
-                torch.zeros((len(saved_features), in_size[1], in_size[2], in_size[3])))
-            input_conv_bias_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
-            input_norm_weight_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
-            input_norm_bias_new = nn.parameter.Parameter(torch.zeros((len(saved_features))))
-            output_conv_weight_new = nn.parameter.Parameter(
-                torch.zeros((out_size[0], len(saved_features), out_size[2], out_size[3])))
+            input_conv_weight_new_list = []
+            input_conv_bias_new_list = []
+            input_norm_weight_new_list = []
+            input_norm_bias_new_list = []
+            input_norm_running_mean_new_list = []
+            input_norm_running_var_new_list = []
+            output_conv_weight_new_list = []
+
             for j, pair in enumerate(saved_features):
                 i, _ = pair
-                input_conv_weight_new[j] = input_conv_weight.data[i]
-                input_conv_bias_new[j] = input_conv_bias.data[i]
-                input_norm_weight_new[j] = input_norm_weight.data[i]
-                input_norm_bias_new[j] = input_norm_bias.data[i]
-                output_conv_weight_new[:, j] = output_conv_weight.data[:, i]
+                input_conv_weight_new_list.append(input_conv_weight.data[i])
+                input_conv_bias_new_list.append(input_conv_bias.data[i])
+                input_norm_weight_new_list.append(input_norm_weight.data[i])
+                input_norm_bias_new_list.append(input_norm_bias.data[i])
+                input_norm_running_mean_new_list.append(input_norm_running_mean.data[i])
+                input_norm_running_var_new_list.append(input_norm_running_var.data[i])
+                output_conv_weight_new_list.append(output_conv_weight.data[:, i])
+
+            input_conv_weight_new = nn.parameter.Parameter(torch.stack(input_conv_weight_new_list))
+            input_conv_bias_new = nn.parameter.Parameter(torch.stack(input_conv_bias_new_list))
+            input_norm_weight_new = nn.parameter.Parameter(torch.stack(input_norm_weight_new_list))
+            input_norm_bias_new = nn.parameter.Parameter(torch.stack(input_norm_bias_new_list))
+            input_norm_running_mean_new = nn.parameter.Parameter(torch.stack(input_norm_running_mean_new_list))
+            input_norm_running_var_new = nn.parameter.Parameter(torch.stack(input_norm_running_var_new_list))
+            output_conv_weight_new = nn.parameter.Parameter(torch.stack(output_conv_weight_new_list, dim=1))
+
             res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
+            # example = torch.rand((1, 64, 32, 32))
+            # res_block(example)
+
             res_block.conv1[0].weight = input_conv_weight_new
             res_block.conv1[0].bias = input_conv_bias_new
             res_block.conv1[1].weight = input_norm_weight_new
             res_block.conv1[1].bias = input_norm_bias_new
+            res_block.conv1[1].running_mean = input_norm_running_mean_new
+            res_block.conv1[1].running_var = input_norm_running_var_new
+            # res_block.conv2[0].weight = output_conv_weight_new
+
+            # res_block.conv1[0].weight = input_conv_weight
+            # res_block.conv1[0].bias = input_conv_bias
+
+            # res_block.conv1[1].weight = input_norm_weight
+            # res_block.conv1[1].bias = input_norm_bias
+
+            res_block.conv1[1].num_batches_tracked = seq.conv1[1].num_batches_tracked
+            # res_block.conv1[1].running_mean = input_norm_running_mean
+            # res_block.conv1[1].running_var = input_norm_running_var
+            res_block.conv1[1].training = False
+
             res_block.conv2[0].weight = output_conv_weight_new
-            example = torch.rand((1, 64, 32, 32))
-            orig_res = seq(example)
-            new_res = res_block(example)
-            compare = torch.sum(torch.abs(orig_res - new_res))
-            print(compare)
+            res_block.conv2[0].bias = seq.conv2[0].bias
+
+            res_block.conv2[1].weight = seq.conv2[1].weight
+            res_block.conv2[1].bias = seq.conv2[1].bias
+
+            res_block.conv2[1].num_batches_tracked = seq.conv2[1].num_batches_tracked
+            res_block.conv2[1].training = False
+            res_block.conv2[1].running_mean = seq.conv2[1].running_mean
+            res_block.conv2[1].running_var = seq.conv2[1].running_var
+
+            # print("orig")
+            # orig_res = seq(example)
+            # print("new")
+            # new_res = res_block(example)
+            # compare = torch.sum(torch.abs(orig_res - new_res))
+            # print(compare)
             layers.append(res_block)
         self.recration_features.append(layers_features)
         return nn.Sequential(*layers)
