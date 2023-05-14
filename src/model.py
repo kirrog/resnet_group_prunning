@@ -1,4 +1,3 @@
-import json
 from functools import reduce
 
 import torch
@@ -106,7 +105,7 @@ class ResNet(nn.Module):
                 ocw = torch.sum(torch.abs(output_conv_weight[:, i])) / self.calc_length(input_conv_weight[i])
                 value = icw + icb + inw + inb + ocw
                 all_features.append((i, float(value)))
-                if value > threshold:
+                if value >= threshold:
                     saved_features.append((i, value))
             layers_features.append(all_features)
             if len(saved_features) == 0:
@@ -180,45 +179,69 @@ class ResNet(nn.Module):
             # compare = torch.sum(torch.abs(orig_res - new_res))
             # print(compare)
             layers.append(res_block)
-        self.recration_features.append(layers_features)
+        self.recreation_features.append(layers_features)
         return nn.Sequential(*layers)
 
     def calc_weights(self, seq):
-        return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in
-                    list(seq.parameters())])
+        params = list(seq.parameters())
+        return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in params])
+
+    def calc_norm_weights(self, seq):
+        params = list(seq.parameters())
+        params[0] = params[0] - 1
+        return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in params])
 
     def recreate_layer_with_block_threshold(self, layer_seq, threshold: float):
-        layers = []
+        layers = [layer_seq[0]]
         stats_data = []
         for seq in layer_seq[1:]:
             c1l = self.calc_weights(seq.conv1[0])
-            c1b = self.calc_weights(seq.conv1[1])
+            c1b = self.calc_norm_weights(seq.conv1[1])
             c2l = self.calc_weights(seq.conv2[0])
-            c2b = self.calc_weights(seq.conv2[1])
+            c2b = self.calc_norm_weights(seq.conv2[1])
             stats_data.append([c1l, c1b, c2l, c2b])
             sum_all = c1l + c1b + c2l + c2b
-            print(f"All: {sum_all} c1l: {c1l} c1b: {c1b} c2l: {c2l} c2b: {c2b}")
-            if sum_all > threshold:
+            # print(f"All: {sum_all} c1l: {c1l} c1b: {c1b} c2l: {c2l} c2b: {c2b}")
+            if sum_all >= threshold:
                 layers.append(seq)
-        self.recration_features.append(stats_data)
+        self.recreation_features.append(stats_data)
         return nn.Sequential(*layers)
 
-    def recreation_with_filter_regularization(self, threshold: float, path2dump_stats: str = "stat_dump.json"):
-        self.recration_features = []
+    def recreation_with_filter_regularization(self, threshold: float):
+        assert 1.0 >= threshold >= 0.0
+        self.recreation_features = []
         with torch.no_grad():
+            for lay in [self.layer0, self.layer1, self.layer2, self.layer3]:
+                self.recreate_layer_with_filter_treshold(lay, 1.0)
+            groups_values = []
+            for x in self.recreation_features:
+                for y in x:
+                    for z in y:
+                        groups_values.append(z[1])
+            mx = max(groups_values)
+            mn = min(groups_values)
+            threshold = threshold * (mx - mn) + mn
+            self.recreation_features = []
             self.layer0 = self.recreate_layer_with_filter_treshold(self.layer0, threshold)
             self.layer1 = self.recreate_layer_with_filter_treshold(self.layer1, threshold)
             self.layer2 = self.recreate_layer_with_filter_treshold(self.layer2, threshold)
             self.layer3 = self.recreate_layer_with_filter_treshold(self.layer3, threshold)
-        with open(path2dump_stats[:-5] + str(threshold) + ".json", "w") as f:
-            json.dump(self.recration_features, f)
 
-    def recreation_with_block_regularization(self, threshold: float, path2dump_stats: str = "stat_dump.json"):
-        self.recration_features = []
+    def recreation_with_block_regularization(self, threshold: float):
+        assert 1.0 >= threshold >= 0.0
+        self.recreation_features = []
         with torch.no_grad():
+            for lay in [self.layer0, self.layer1, self.layer2, self.layer3]:
+                self.recreate_layer_with_block_threshold(lay, 1.0)
+            groups_values = []
+            for x in self.recreation_features:
+                for y in x:
+                    groups_values.append(sum(y))
+            mx = max(groups_values)
+            mn = min(groups_values)
+            threshold = threshold * (mx - mn) + mn
+            self.recreation_features = []
             self.layer0 = self.recreate_layer_with_block_threshold(self.layer0, threshold)
             self.layer1 = self.recreate_layer_with_block_threshold(self.layer1, threshold)
             self.layer2 = self.recreate_layer_with_block_threshold(self.layer2, threshold)
             self.layer3 = self.recreate_layer_with_block_threshold(self.layer3, threshold)
-        with open(path2dump_stats[:-5] + str(threshold) + ".json", "w") as f:
-            json.dump(self.recration_features, f)
