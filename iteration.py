@@ -118,9 +118,30 @@ def iterate_through_hyperparams(output_path: Path, batch_size=4096):
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
             print(f"Experiment: {exp.name}")
-            output = output_path / aug_4_block_path.name / exp.name
+            output = output_path / hyper_param.name / exp.name
             iterate_through_experiment(exp, output, test_loader)
 
 
+def move_hyperparams(output_path: Path):
+    models = dict()
+    for hyps in (output_path / "aug_4_block").glob("*"):
+        l = [x.name[:-4] for x in list(hyps.glob("*"))]
+        print(f"Name: {hyps.name} len: {len(l)}")
+        models[hyps.name] = set(l)
+    for hyper_param in hyperparams_list[1:]:
+        for exp in hyper_param.glob("*"):
+            output = output_path / hyper_param.name / exp.name
+            output.mkdir(parents=True, exist_ok=True)
+            models_paths = [x.name[:-4] for x in list(exp.glob("ep*"))]
+            s = set(models_paths).intersection(models[exp.name])
+            print(f"Hyp: {hyper_param.name}, models: {len(models_paths)} found: {len(s)}")
+            for model_path in s:
+                stats_output = output / (model_path + ".pkl")
+                stats_input = output_path / "aug_4_block" / exp.name / (model_path + ".pkl")
+                with open(str(stats_input), "rb") as f_in:
+                    with open(str(stats_output), "wb") as f_out:
+                        pickle.dump(pickle.load(f_in), f_out)
+
+
 if __name__ == "__main__":
-    iterate_through_hyperparams(output_path)
+    move_hyperparams(output_path)
