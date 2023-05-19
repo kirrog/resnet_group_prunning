@@ -127,6 +127,14 @@ def move_hyperparams(output_path: Path):
     for hyps in (output_path / "aug_4_block").glob("*"):
         l = [x.name[:-4] for x in list(hyps.glob("*"))]
         print(f"Name: {hyps.name} len: {len(l)}")
+        if len(l) == 99:
+            ll = []
+            for exp in [x[:6] for x in l]:
+                if exp in ll:
+                    ll.remove(exp)
+                else:
+                    ll.append(exp)
+            print(ll)
         models[hyps.name] = set(l)
     for hyper_param in hyperparams_list[1:]:
         for exp in hyper_param.glob("*"):
@@ -145,3 +153,6 @@ def move_hyperparams(output_path: Path):
 
 if __name__ == "__main__":
     move_hyperparams(output_path)
+
+# l1_1e-06_l2_1e-07_wd_1e-08 - ep_012
+# l1_1e-05_l2_1e-06_wd_1e-08 - ep_024
