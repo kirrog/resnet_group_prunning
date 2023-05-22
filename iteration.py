@@ -11,7 +11,7 @@ from src.model import ResNet, ResidualBlock
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
-output_path = Path("/home/kirrog/projects/FQWB/model/stats")
+output_path = Path("/home/kirrog/projects/FQWB/model/statss")
 
 hyperparams_list = [aug_4_block_path, aug_4_block_reg_block_path, aug_4_block_reg_group_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -152,7 +152,7 @@ def move_hyperparams(output_path: Path):
 
 
 if __name__ == "__main__":
-    move_hyperparams(output_path)
+    iterate_through_hyperparams(output_path)
 
 # l1_1e-06_l2_1e-07_wd_1e-08 - ep_012
 # l1_1e-05_l2_1e-06_wd_1e-08 - ep_024

@@ -84,7 +84,7 @@ class ResNet(nn.Module):
     def calc_length(self, x):
         return reduce(lambda a, b: a * b, x.size())
 
-    def recreate_layer_with_filter_treshold(self, layer_seq, threshold: float):
+    def recreate_layer_with_filter_threshold(self, layer_seq, threshold: float):
         layers = [layer_seq[0]]
         layers_features = []
         for seq in layer_seq[1:]:
@@ -98,11 +98,11 @@ class ResNet(nn.Module):
             saved_features = []
             all_features = []
             for i in range(seq.conv1[0].weight.size()[0]):
-                icw = torch.sum(torch.abs(input_conv_weight[i])) / self.calc_length(input_conv_weight[i])
-                icb = torch.sum(torch.abs(input_conv_bias[i])) / self.calc_length(input_conv_weight[i])
-                inw = torch.sum(torch.abs(input_norm_weight[i] - 1.0)) / self.calc_length(input_conv_weight[i])
-                inb = torch.sum(torch.abs(input_norm_bias[i])) / self.calc_length(input_conv_weight[i])
-                ocw = torch.sum(torch.abs(output_conv_weight[:, i])) / self.calc_length(input_conv_weight[i])
+                icw = torch.sum(torch.abs(input_conv_weight[i]))
+                icb = torch.sum(torch.abs(input_conv_bias[i]))
+                inw = torch.sum(torch.abs(input_norm_weight[i] - 1.0))
+                inb = torch.sum(torch.abs(input_norm_bias[i]))
+                ocw = torch.sum(torch.abs(output_conv_weight[:, i])) / self.calc_length(output_conv_weight[:, i])
                 value = icw + icb + inw + inb + ocw
                 all_features.append((i, float(value)))
                 if value >= threshold:
@@ -212,7 +212,7 @@ class ResNet(nn.Module):
         self.recreation_features = []
         with torch.no_grad():
             for lay in [self.layer0, self.layer1, self.layer2, self.layer3]:
-                self.recreate_layer_with_filter_treshold(lay, 1.0)
+                self.recreate_layer_with_filter_threshold(lay, 1.0)
             groups_values = []
             for x in self.recreation_features:
                 for y in x:
@@ -222,10 +222,10 @@ class ResNet(nn.Module):
             mn = min(groups_values)
             threshold = threshold * (mx - mn) + mn
             self.recreation_features = []
-            self.layer0 = self.recreate_layer_with_filter_treshold(self.layer0, threshold)
-            self.layer1 = self.recreate_layer_with_filter_treshold(self.layer1, threshold)
-            self.layer2 = self.recreate_layer_with_filter_treshold(self.layer2, threshold)
-            self.layer3 = self.recreate_layer_with_filter_treshold(self.layer3, threshold)
+            self.layer0 = self.recreate_layer_with_filter_threshold(self.layer0, threshold)
+            self.layer1 = self.recreate_layer_with_filter_threshold(self.layer1, threshold)
+            self.layer2 = self.recreate_layer_with_filter_threshold(self.layer2, threshold)
+            self.layer3 = self.recreate_layer_with_filter_threshold(self.layer3, threshold)
 
     def recreation_with_block_regularization(self, threshold: float):
         assert 1.0 >= threshold >= 0.0
