@@ -11,7 +11,7 @@ from src.model import ResNet, ResidualBlock
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
-output_path = Path("/home/kirrog/projects/FQWB/model/statss")
+output_path = Path("/home/kirrog/projects/FQWB/model/stats_pool")
 
 hyperparams_list = [aug_4_block_path, aug_4_block_reg_block_path, aug_4_block_reg_group_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -151,8 +151,95 @@ def move_hyperparams(output_path: Path):
                         pickle.dump(pickle.load(f_in), f_out)
 
 
+def experiment_on_model_with_lowest_filter(model_path: Path, test_loader):
+    model = get_new_model_instance()
+    orig_state = torch.load(str(model_path))
+    model.load_state_dict(orig_state)
+    model.eval()
+    model = model.cuda()
+    orig_metrics = calc_metrics(model, test_loader, device)
+    step_cuttings = []
+    acc_per_weight_values = []
+    for step in range(4):
+        model = model.cpu()
+        all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(step, 1)
+        model.eval()
+        model = model.cuda()
+        exp_metrics = calc_metrics(model, test_loader, device)
+        acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]) / size_value, 0.000000001)
+        acc_per_weight_values.append(acc_per_weight_value)
+        step_cuttings.append((step, exp_metrics, all_features,
+                              lowest_feature_value, size_value, acc_per_weight_value))
+        model = get_new_model_instance()
+        model.load_state_dict(orig_state)
+        model.eval()
+    acc_per_weight_sum = sum(acc_per_weight_values) / len(acc_per_weight_values)
+    weight_pool = acceptable_loss_acc_value / acc_per_weight_sum
+    step_cuttings_sorted = list(sorted(list(enumerate(step_cuttings)), key=lambda x: -x[1][5]))
+    model = model.cpu()
+    acc_pool = 0.0
+    results_cut = []
+    for i, step_info in step_cuttings_sorted:
+        value = (weight_pool * (step_info[5] / acc_per_weight_sum)) / step_info[4]
+        num = round(value)
+        dif = value - num
+        if num == 0 :
+            num += 1
+        norm = step_info[5] * step_info[4]
+        if dif > 0.0:
+            if acc_pool > norm * dif:
+                num += 1
+                acc_pool -= norm * dif
+                v = int(acc_pool / norm)
+                num += v
+                acc_pool -= norm * v
+            else:
+                acc_pool += norm * dif
+        else:
+            if acc_pool > norm * abs(dif):
+                num += 1
+                acc_pool -= norm * abs(dif)
+                v = int(acc_pool / norm)
+                num += v
+                acc_pool -= norm * v
+            else:
+                num -= 1
+                acc_pool += norm * (1 + dif)
+        if num > 0:
+            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(i, num)
+            results_cut.append((all_features, lowest_feature_value, size_value, num, dif, i))
+    model.eval()
+    model = model.cuda()
+    exp_metrics = calc_metrics(model, test_loader, device)
+    result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut}
+    return {"orig": orig_metrics, "steps": step_cuttings, "results": result}
+
+
+def iterate_through_experiment_lowest_delete(directory_models: Path, directory_stats: Path, test_loader):
+    directory_stats.mkdir(parents=True, exist_ok=True)
+    models_paths = list(directory_models.glob("ep*.bin"))
+    for model_path in tqdm(models_paths, desc="models"):
+        filter_metrics = experiment_on_model_with_lowest_filter(model_path, test_loader)
+        result = {"filter": filter_metrics}
+        stats_output = directory_stats / (model_path.name[:-4] + ".pkl")
+        with open(str(stats_output), "wb") as f:
+            pickle.dump(result, f)
+
+
+def iterate_through_hyperparams_lowest_delete(output_path: Path, batch_size=4096):
+    test_loader = data_loader(data_dir='./data',
+                              batch_size=batch_size,
+                              test=True)
+    for hyper_param in hyperparams_list:
+        print(f"Work with hyperparams: {hyper_param.name}")
+        for exp in hyper_param.glob("*"):
+            print(f"Experiment: {exp.name}")
+            output = output_path / hyper_param.name / exp.name
+            iterate_through_experiment_lowest_delete(exp, output, test_loader)
+
+
 if __name__ == "__main__":
-    iterate_through_hyperparams(output_path)
+    iterate_through_hyperparams_lowest_delete(output_path)
 
 # l1_1e-06_l2_1e-07_wd_1e-08 - ep_012
 # l1_1e-05_l2_1e-06_wd_1e-08 - ep_024

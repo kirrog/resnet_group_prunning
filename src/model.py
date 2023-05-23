@@ -1,4 +1,5 @@
 from functools import reduce
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -98,7 +99,7 @@ class ResNet(nn.Module):
             saved_features = []
             all_features = []
             for i in range(seq.conv1[0].weight.size()[0]):
-                icw = torch.sum(torch.abs(input_conv_weight[i]))
+                icw = torch.sum(torch.abs(input_conv_weight[i])) / self.calc_length(input_conv_weight[i])
                 icb = torch.sum(torch.abs(input_conv_bias[i]))
                 inw = torch.sum(torch.abs(input_norm_weight[i] - 1.0))
                 inb = torch.sum(torch.abs(input_norm_bias[i]))
@@ -182,6 +183,81 @@ class ResNet(nn.Module):
         self.recreation_features.append(layers_features)
         return nn.Sequential(*layers)
 
+    def recreate_layer_with_filter_delete_num(self, seq, num2delete):
+        input_conv_weight = seq.conv1[0].weight
+        input_conv_bias = seq.conv1[0].bias
+        input_norm_weight = seq.conv1[1].weight
+        input_norm_bias = seq.conv1[1].bias
+        input_norm_running_var = seq.conv1[1].running_var
+        input_norm_running_mean = seq.conv1[1].running_mean
+        output_conv_weight = seq.conv2[0].weight
+        all_features = []
+        size_value = 0
+        for i in range(seq.conv1[0].weight.size()[0]):
+            size_value = self.calc_length(input_conv_weight[i])
+            icw = torch.sum(torch.abs(input_conv_weight[i])) / self.calc_length(input_conv_weight[i])
+            # icb = torch.sum(torch.abs(input_conv_bias[i]))
+            # inw = torch.sum(torch.abs(input_norm_weight[i] - 1.0))
+            # inb = torch.sum(torch.abs(input_norm_bias[i]))
+            ocw = torch.sum(torch.abs(output_conv_weight[:, i])) / self.calc_length(output_conv_weight[:, i])
+            value = icw + ocw  # + icb + inw + inb
+            all_features.append((i, float(value)))
+        lowest_feature_value = list(map(lambda x: x[1], sorted(all_features, key=lambda x: x[1])))[:num2delete]
+        saved_features = list(filter(lambda x: x[1] not in lowest_feature_value, all_features))
+
+        in_size = input_conv_weight.size()
+        out_size = output_conv_weight.size()
+        input_conv_weight_new_list = []
+        input_conv_bias_new_list = []
+        input_norm_weight_new_list = []
+        input_norm_bias_new_list = []
+        input_norm_running_mean_new_list = []
+        input_norm_running_var_new_list = []
+        output_conv_weight_new_list = []
+
+        for j, pair in enumerate(saved_features):
+            i, _ = pair
+            input_conv_weight_new_list.append(input_conv_weight.data[i])
+            input_conv_bias_new_list.append(input_conv_bias.data[i])
+            input_norm_weight_new_list.append(input_norm_weight.data[i])
+            input_norm_bias_new_list.append(input_norm_bias.data[i])
+            input_norm_running_mean_new_list.append(input_norm_running_mean.data[i])
+            input_norm_running_var_new_list.append(input_norm_running_var.data[i])
+            output_conv_weight_new_list.append(output_conv_weight.data[:, i])
+
+        input_conv_weight_new = nn.parameter.Parameter(torch.stack(input_conv_weight_new_list))
+        input_conv_bias_new = nn.parameter.Parameter(torch.stack(input_conv_bias_new_list))
+        input_norm_weight_new = nn.parameter.Parameter(torch.stack(input_norm_weight_new_list))
+        input_norm_bias_new = nn.parameter.Parameter(torch.stack(input_norm_bias_new_list))
+        input_norm_running_mean_new = nn.parameter.Parameter(torch.stack(input_norm_running_mean_new_list))
+        input_norm_running_var_new = nn.parameter.Parameter(torch.stack(input_norm_running_var_new_list))
+        output_conv_weight_new = nn.parameter.Parameter(torch.stack(output_conv_weight_new_list, dim=1))
+
+        res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
+
+        res_block.conv1[0].weight = input_conv_weight_new
+        res_block.conv1[0].bias = input_conv_bias_new
+        res_block.conv1[1].weight = input_norm_weight_new
+        res_block.conv1[1].bias = input_norm_bias_new
+        res_block.conv1[1].running_mean = input_norm_running_mean_new
+        res_block.conv1[1].running_var = input_norm_running_var_new
+
+        res_block.conv1[1].num_batches_tracked = seq.conv1[1].num_batches_tracked
+        res_block.conv1[1].training = False
+
+        res_block.conv2[0].weight = output_conv_weight_new
+        res_block.conv2[0].bias = seq.conv2[0].bias
+
+        res_block.conv2[1].weight = seq.conv2[1].weight
+        res_block.conv2[1].bias = seq.conv2[1].bias
+
+        res_block.conv2[1].num_batches_tracked = seq.conv2[1].num_batches_tracked
+        res_block.conv2[1].training = False
+        res_block.conv2[1].running_mean = seq.conv2[1].running_mean
+        res_block.conv2[1].running_var = seq.conv2[1].running_var
+
+        return res_block, all_features, lowest_feature_value, size_value
+
     def calc_weights(self, seq):
         params = list(seq.parameters())
         return sum([torch.sum(torch.abs(x)) / reduce(lambda a, b: a * b, x.size()) for x in params])
@@ -226,6 +302,38 @@ class ResNet(nn.Module):
             self.layer1 = self.recreate_layer_with_filter_threshold(self.layer1, threshold)
             self.layer2 = self.recreate_layer_with_filter_threshold(self.layer2, threshold)
             self.layer3 = self.recreate_layer_with_filter_threshold(self.layer3, threshold)
+
+    def recreation_with_filter_lowest_delete(self, number: int, num2delete):
+        assert 3 >= number >= 0
+        with torch.no_grad():
+            lowest_feature_value = 0
+            if number == 0:
+                layers = [self.layer0[0]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_delete_num(self.layer0[1], num2delete)
+                layers.append(res_block)
+                layers.append(self.layer0[2])
+                self.layer0 = nn.Sequential(*layers)
+            elif number == 1:
+                layers = [self.layer0[0], self.layer0[1]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_delete_num(self.layer0[2], num2delete)
+                layers.append(res_block)
+                self.layer0 = nn.Sequential(*layers)
+            elif number == 2:
+                layers = [self.layer3[0]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_delete_num(self.layer3[1], num2delete)
+                layers.append(res_block)
+                layers.append(self.layer3[2])
+                self.layer3 = nn.Sequential(*layers)
+            elif number == 3:
+                layers = [self.layer3[0], self.layer3[1]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_delete_num(self.layer3[2], num2delete)
+                layers.append(res_block)
+                self.layer3 = nn.Sequential(*layers)
+        return all_features, lowest_feature_value, size_value
 
     def recreation_with_block_regularization(self, threshold: float):
         assert 1.0 >= threshold >= 0.0
