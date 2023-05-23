@@ -12,7 +12,8 @@ def data_loader(data_dir,
                 random_seed=42,
                 valid_size=0.1,
                 shuffle=True,
-                test=False):
+                test=False,
+                num_of_workers=24):
     normalize = transforms.Normalize(
         mean=[0.4914, 0.4822, 0.4465],
         std=[0.2023, 0.1994, 0.2010],
@@ -38,7 +39,7 @@ def data_loader(data_dir,
         )
 
         data_loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=shuffle, num_workers=16
+            dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_of_workers#, pin_memory=True
         )
 
         return data_loader
@@ -59,7 +60,7 @@ def data_loader(data_dir,
     split = int(np.floor(valid_size * num_train))
 
     if shuffle:
-        np.random.seed(42)
+        np.random.seed(random_seed)
         np.random.shuffle(indices)
 
     train_idx, valid_idx = indices[split:], indices[:split]
@@ -67,9 +68,9 @@ def data_loader(data_dir,
     valid_sampler = SubsetRandomSampler(valid_idx)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler, num_workers=16)
+        train_dataset, batch_size=batch_size, sampler=train_sampler, num_workers=num_of_workers)
 
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=batch_size, sampler=valid_sampler, num_workers=16)
+        valid_dataset, batch_size=batch_size, sampler=valid_sampler, num_workers=num_of_workers)
 
     return (train_loader, valid_loader)

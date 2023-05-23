@@ -13,7 +13,7 @@ aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
 output_path = Path("/home/kirrog/projects/FQWB/model/stats_pool")
 
-hyperparams_list = [aug_4_block_path, aug_4_block_reg_block_path, aug_4_block_reg_group_path]
+hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_of_filter_steps = 10
 num_of_block_steps = 10
@@ -151,7 +151,7 @@ def move_hyperparams(output_path: Path):
                         pickle.dump(pickle.load(f_in), f_out)
 
 
-def experiment_on_model_with_lowest_filter(model_path: Path, test_loader):
+def experiment_on_model_with_lowest_filter(model_path: Path, test_loader, num_of_layers=4):
     model = get_new_model_instance()
     orig_state = torch.load(str(model_path))
     model.load_state_dict(orig_state)
@@ -159,69 +159,79 @@ def experiment_on_model_with_lowest_filter(model_path: Path, test_loader):
     model = model.cuda()
     orig_metrics = calc_metrics(model, test_loader, device)
     step_cuttings = []
-    acc_per_weight_values = []
-    for step in range(4):
+    sub_step_cuttings_list = []
+
+    mids = []
+    for step in range(num_of_layers):
         model = model.cpu()
         all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(step, 1)
         model.eval()
         model = model.cuda()
         exp_metrics = calc_metrics(model, test_loader, device)
-        acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]) / size_value, 0.000000001)
-        acc_per_weight_values.append(acc_per_weight_value)
+        acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
         step_cuttings.append((step, exp_metrics, all_features,
                               lowest_feature_value, size_value, acc_per_weight_value))
         model = get_new_model_instance()
         model.load_state_dict(orig_state)
         model.eval()
-    acc_per_weight_sum = sum(acc_per_weight_values) / len(acc_per_weight_values)
-    weight_pool = acceptable_loss_acc_value / acc_per_weight_sum
-    step_cuttings_sorted = list(sorted(list(enumerate(step_cuttings)), key=lambda x: -x[1][5]))
+        sub_steps_cutting = []
+        low = 0
+        high = len(all_features)
+        mid = 0
+        while low <= high:
+            mid = (high + low) // 2
+
+            model = model.cpu()
+            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(step, mid)
+            model.eval()
+            model = model.cuda()
+            exp_metrics = calc_metrics(model, test_loader, device)
+            acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
+            sub_steps_cutting.append((step, exp_metrics, all_features,
+                                      lowest_feature_value, size_value, acc_per_weight_value))
+            model = get_new_model_instance()
+            model.load_state_dict(orig_state)
+            model.eval()
+
+            if acc_per_weight_value < acceptable_loss_acc_value:
+                low = mid + 1
+            elif acc_per_weight_value > acceptable_loss_acc_value:
+                high = mid - 1
+            else:
+                break
+        mids.append(mid)
+        sub_step_cuttings_list.append(sub_steps_cutting)
+
     model = model.cpu()
     acc_pool = 0.0
     results_cut = []
-    for i, step_info in step_cuttings_sorted:
-        value = (weight_pool * (step_info[5] / acc_per_weight_sum)) / step_info[4]
-        num = round(value)
-        dif = value - num
-        if num == 0 :
-            num += 1
-        norm = step_info[5] * step_info[4]
-        if dif > 0.0:
-            if acc_pool > norm * dif:
-                num += 1
-                acc_pool -= norm * dif
-                v = int(acc_pool / norm)
-                num += v
-                acc_pool -= norm * v
-            else:
-                acc_pool += norm * dif
-        else:
-            if acc_pool > norm * abs(dif):
-                num += 1
-                acc_pool -= norm * abs(dif)
-                v = int(acc_pool / norm)
-                num += v
-                acc_pool -= norm * v
-            else:
-                num -= 1
-                acc_pool += norm * (1 + dif)
-        if num > 0:
-            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(i, num)
-            results_cut.append((all_features, lowest_feature_value, size_value, num, dif, i))
+    for i, mid_num_v in enumerate(mids):
+        mid_num = mid_num_v // num_of_layers
+        if mid_num > 0:
+            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_delete(i, mid_num)
+            results_cut.append((all_features, lowest_feature_value, size_value, mid_num, i))
     model.eval()
     model = model.cuda()
     exp_metrics = calc_metrics(model, test_loader, device)
-    result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut}
+    result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut,
+              "search": sub_step_cuttings_list, "mids": mids}
     return {"orig": orig_metrics, "steps": step_cuttings, "results": result}
 
 
 def iterate_through_experiment_lowest_delete(directory_models: Path, directory_stats: Path, test_loader):
     directory_stats.mkdir(parents=True, exist_ok=True)
     models_paths = list(directory_models.glob("ep*.bin"))
+    bef = len(models_paths)
+    max_acc = max(map(lambda x: float(x.name[11:-4]), models_paths))
+    models_paths = list(filter(lambda x: max_acc - float(x.name[11:-4]) <= acceptable_loss_acc_value, models_paths))
+    aft = len(models_paths)
+    print(f"Found: {bef}, calc: {aft}")
     for model_path in tqdm(models_paths, desc="models"):
+        stats_output = directory_stats / (model_path.name[:-4] + ".pkl")
+        if stats_output.exists():
+            continue
         filter_metrics = experiment_on_model_with_lowest_filter(model_path, test_loader)
         result = {"filter": filter_metrics}
-        stats_output = directory_stats / (model_path.name[:-4] + ".pkl")
         with open(str(stats_output), "wb") as f:
             pickle.dump(result, f)
 
