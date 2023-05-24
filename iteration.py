@@ -169,9 +169,9 @@ def experiment_on_model_with_lowest_filter(model_path: Path, test_loader, num_of
         model.eval()
         model = model.cuda()
         exp_metrics = calc_metrics(model, test_loader, device)
-        acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
+        acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
         step_cuttings.append((step, exp_metrics, all_features,
-                              lowest_feature_value, size_value, acc_per_weight_value))
+                              lowest_feature_value, size_value, acc_drop))
         model = get_new_model_instance()
         model.load_state_dict(orig_state)
         model.eval()
@@ -187,16 +187,16 @@ def experiment_on_model_with_lowest_filter(model_path: Path, test_loader, num_of
             model.eval()
             model = model.cuda()
             exp_metrics = calc_metrics(model, test_loader, device)
-            acc_per_weight_value = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
+            acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
             sub_steps_cutting.append((step, exp_metrics, all_features,
-                                      lowest_feature_value, size_value, acc_per_weight_value))
+                                      lowest_feature_value, size_value, acc_drop))
             model = get_new_model_instance()
             model.load_state_dict(orig_state)
             model.eval()
 
-            if acc_per_weight_value < acceptable_loss_acc_value:
+            if acc_drop < acceptable_loss_acc_value:
                 low = mid + 1
-            elif acc_per_weight_value > acceptable_loss_acc_value:
+            elif acc_drop > acceptable_loss_acc_value:
                 high = mid - 1
             else:
                 break
