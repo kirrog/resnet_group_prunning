@@ -21,10 +21,10 @@ def accuracy_cut_coefficient_graphic(data_metrics, name=""):
             cut_acc = value["filter"]["results"]["exp_metrics"]["acc"]
             if max_cut_acc < cut_acc:
                 max_cut_acc = cut_acc
-                best_epoch_num = j
+                best_epoch_num = int(value["filename"][3:6])
             if acc > max_acc:
                 max_acc = acc
-                epoch_num = j
+                epoch_num = int(value["filename"][3:6])
                 max_acc_cut = cut_acc
         accuracy_orig.append(max_acc)
         accuracy_cut.append(max_acc_cut)

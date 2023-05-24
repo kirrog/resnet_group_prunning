@@ -9,6 +9,7 @@ def load_exp(path2metrics: Path):
         for ep in list(sorted(list(hyps.glob("*")), key=lambda x: int(x.name[3:6]))):
             with open(str(ep), "rb") as f:
                 data = pickle.load(f)
+                data["filename"] = str(ep.name)
                 pickles_data.append(data)
         results[str(hyps.name)] = pickles_data
     return results
