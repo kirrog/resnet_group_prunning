@@ -353,3 +353,15 @@ class ResNet(nn.Module):
             self.layer1 = self.recreate_layer_with_block_threshold(self.layer1, threshold)
             self.layer2 = self.recreate_layer_with_block_threshold(self.layer2, threshold)
             self.layer3 = self.recreate_layer_with_block_threshold(self.layer3, threshold)
+
+    def recreation_with_block_lowest_delete(self, number: int):
+        assert 3 >= number >= 0
+        with torch.no_grad():
+            if number == 0:
+                self.layer0 = nn.Sequential(*[self.layer0[0], self.layer0[2]])
+            elif number == 1:
+                self.layer0 = nn.Sequential(*[self.layer0[0], self.layer0[1]])
+            elif number == 2:
+                self.layer3 = nn.Sequential(*[self.layer3[0], self.layer3[2]])
+            elif number == 3:
+                self.layer3 = nn.Sequential(*[self.layer3[0], self.layer3[1]])

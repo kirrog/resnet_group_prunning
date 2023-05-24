@@ -171,5 +171,4 @@ def one_model_weights_hist(model_stats_path):
 
 
 if __name__ == "__main__":
-    one_model_weights_hist(
-        "/home/kirrog/projects/FQWB/model/stats/aug_4_block/l1____00_l2_0_wd_1e-08/ep_049_acc_0.818200.pkl")
+    accuracy_cut_coefficient_graphics()

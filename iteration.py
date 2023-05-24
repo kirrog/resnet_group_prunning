@@ -2,6 +2,7 @@ import pickle
 from pathlib import Path
 
 import torch
+from torchsummary import summary
 from tqdm import tqdm
 
 from dataset_loader import data_loader
@@ -11,7 +12,7 @@ from src.model import ResNet, ResidualBlock
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
-output_path = Path("/home/kirrog/projects/FQWB/model/stats_pool")
+output_path = Path("/home/kirrog/projects/FQWB/model/stats_block")
 
 hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -248,8 +249,59 @@ def iterate_through_hyperparams_lowest_delete(output_path: Path, batch_size=4096
             iterate_through_experiment_lowest_delete(exp, output, test_loader)
 
 
-if __name__ == "__main__":
-    iterate_through_hyperparams_lowest_delete(output_path)
+def experiment_on_model_with_lowest_block(model_path: Path, test_loader, num_of_layers=4):
+    model = get_new_model_instance()
+    orig_state = torch.load(str(model_path))
+    model.load_state_dict(orig_state)
+    model.eval()
+    model = model.cuda()
+    orig_metrics = calc_metrics(model, test_loader, device)
+    step_cuttings = []
+    for step in range(num_of_layers):
+        model = model.cpu()
+        model.recreation_with_block_lowest_delete(step)
+        model.eval()
+        model = model.cuda()
+        model_stats = summary(model, (3, 32, 32), verbose=0)
+        exp_metrics = calc_metrics(model, test_loader, device)
+        step_cuttings.append((step, exp_metrics, model_stats))
+        model = get_new_model_instance()
+        model.load_state_dict(orig_state)
+        model.eval()
+    return {"orig": orig_metrics, "steps": step_cuttings}
 
+
+def iterate_through_experiment_lowest_block(directory_models: Path, directory_stats: Path, test_loader):
+    directory_stats.mkdir(parents=True, exist_ok=True)
+    models_paths = list(directory_models.glob("ep*.bin"))
+    for model_path in tqdm(models_paths, desc="models"):
+        block_metrics = experiment_on_model_with_lowest_block(model_path, test_loader)
+        result = {"block": block_metrics}
+        stats_output = directory_stats / (model_path.name[:-4] + ".pkl")
+        with open(str(stats_output), "wb") as f:
+            pickle.dump(result, f)
+
+
+def iterate_through_hyperparams_lowest_block(output_path: Path, batch_size=4096):
+    test_loader = data_loader(data_dir='./data',
+                              batch_size=batch_size,
+                              test=True)
+    for hyper_param in hyperparams_list:
+        print(f"Work with hyperparams: {hyper_param.name}")
+        for exp in hyper_param.glob("*"):
+            print(f"Experiment: {exp.name}")
+            output = output_path / hyper_param.name / exp.name
+            iterate_through_experiment_lowest_block(exp, output, test_loader)
+
+
+if __name__ == "__main__":
+    # batch_size = 4096
+    # test_loader = data_loader(data_dir='./data',
+    #                           batch_size=batch_size,
+    #                           test=True)
+    iterate_through_hyperparams_lowest_block(output_path)
+    # model_path = Path(
+    #     "/home/kirrog/projects/FQWB/model/aug_4_block_reg_block/l1_0.0001_l2_1e-05_wd_1e-08/ep_049_acc_0.792200.bin")
+    # experiment_on_model_with_lowest_block(model_path, test_loader)
 # l1_1e-06_l2_1e-07_wd_1e-08 - ep_012
 # l1_1e-05_l2_1e-06_wd_1e-08 - ep_024

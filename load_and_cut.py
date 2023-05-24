@@ -2,6 +2,7 @@ import gc
 from pathlib import Path
 
 import torch
+from torchsummary import summary
 
 from dataset_loader import data_loader
 from src.model import ResidualBlock, ResNet
@@ -16,8 +17,9 @@ MODEL_PATH_IN = "/home/kirrog/projects/FQWB/model/aug_4_block_reg_group/l1_0.000
 model = ResNet(ResidualBlock, [3, 1, 1, 3])
 model.load_state_dict(torch.load(MODEL_PATH_IN))
 model.eval()
-model = model.cuda()
-# summary(model, (3, 224, 224))
+# model = model.cuda()
+summary(model, (3, 32, 32))
+exit(0)
 batch_size = 100
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
