@@ -16,7 +16,7 @@ batch_size = 456
 # CIFAR10 dataset
 train_loader, valid_loader = data_loader(data_dir='./data',
                                          batch_size=batch_size)
-experiment_name = "aug_4_block_reg_block"
+experiment_name = "aug_4_block_reg_block_"
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
@@ -64,10 +64,10 @@ for i in range(len(iter_range) - 1):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-            for params in elems:
-                weights, bias, norm_coef, norm_bias = params
-                loss += block_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
-                                                               weight_coef_l2)
+            # for params in elems:
+            #     weights, bias, norm_coef, norm_bias = params
+                # loss += block_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, weight_coef_l1,
+                #                                                weight_coef_l2)
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()

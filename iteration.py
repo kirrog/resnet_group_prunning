@@ -12,7 +12,7 @@ from src.model import ResNet, ResidualBlock
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
-output_path = Path("/home/kirrog/projects/FQWB/model/stats_block")
+output_path = Path("/home/kirrog/projects/FQWB/model/stats_block_")
 
 hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
