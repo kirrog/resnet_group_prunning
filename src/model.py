@@ -1,11 +1,35 @@
+import gc
 from functools import reduce
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm
+
+
+def rademacher_complexity(inner_data, dimension):
+    assert len(inner_data.size()) > dimension
+    sample = torch.randint(0, 1, inner_data.size())
+    sample[sample == 0] = -1
+
+
+def inner_data_entropy(inner_data):
+    lsm = nn.LogSoftmax()
+    log_probs = lsm(inner_data)
+    probs = torch.exp(log_probs)
+    p_log_p = log_probs * probs
+    entropy = -p_log_p.mean(dim=(1, 2))
+    return entropy
+
+
+def inner_data_processing(inner_data, processing_function):
+    output = []
+    for element in range(inner_data.size()[0]):
+        output.append(processing_function(inner_data[element]).to("cpu"))
+    return output
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None, middle_channels=None):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None, middle_channels=None, is_processing=False):
         super(ResidualBlock, self).__init__()
         if middle_channels is None:
             middle_channels = out_channels
@@ -19,10 +43,16 @@ class ResidualBlock(nn.Module):
         self.downsample = downsample
         self.relu = nn.ReLU()
         self.out_channels = out_channels
+        self.inner_data = []
+        self.process_data = 0
+        self.is_processing = is_processing
 
     def forward(self, x):
         residual = x
         out = self.conv1(x)
+        if self.is_processing:
+            self.process_data += out.size()[0]
+            self.inner_data += inner_data_processing(out, inner_data_entropy)
         # print(torch.mean(out))
         out = self.conv2(out)
         # print(torch.mean(out))
@@ -33,6 +63,9 @@ class ResidualBlock(nn.Module):
         out = self.relu(out)
         # print(torch.mean(out))
         return out
+
+    def get_features(self):
+        return torch.mean(torch.cat([torch.unsqueeze(x, dim=0) for x in self.inner_data], dim=0), dim=0)
 
 
 class ResNet(nn.Module):
@@ -52,6 +85,7 @@ class ResNet(nn.Module):
         # self.fc = nn.Linear(4096, num_classes)
         self.fc = nn.Linear(512, num_classes)
         self.num_classes = num_classes
+        self.recreation_features = []
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -364,3 +398,229 @@ class ResNet(nn.Module):
                 self.layer3 = nn.Sequential(*[self.layer3[0], self.layer3[2]])
             elif number == 3:
                 self.layer3 = nn.Sequential(*[self.layer3[0], self.layer3[1]])
+
+    #################################################################################
+
+    def recreate_layer_with_filter_inner_data_threshold(self, layer_seq, threshold: float):
+        layers = [layer_seq[0]]
+        layers_features = []
+        for seq in layer_seq[1:]:
+            features_of_inner_data = seq.get_features()
+            input_conv_weight = seq.conv1[0].weight
+            input_conv_bias = seq.conv1[0].bias
+            input_norm_weight = seq.conv1[1].weight
+            input_norm_bias = seq.conv1[1].bias
+            input_norm_running_var = seq.conv1[1].running_var
+            input_norm_running_mean = seq.conv1[1].running_mean
+            output_conv_weight = seq.conv2[0].weight
+            saved_features = []
+            all_features = []
+            for i, inner_data_value in enumerate(features_of_inner_data):
+                all_features.append((i, float(inner_data_value)))
+                if inner_data_value >= threshold:
+                    saved_features.append((i, inner_data_value))
+            layers_features.append(all_features)
+            if len(saved_features) == 0:
+                continue
+            in_size = input_conv_weight.size()
+            out_size = output_conv_weight.size()
+            input_conv_weight_new_list = []
+            input_conv_bias_new_list = []
+            input_norm_weight_new_list = []
+            input_norm_bias_new_list = []
+            input_norm_running_mean_new_list = []
+            input_norm_running_var_new_list = []
+            output_conv_weight_new_list = []
+
+            for j, pair in enumerate(saved_features):
+                i, _ = pair
+                input_conv_weight_new_list.append(input_conv_weight.data[i])
+                input_conv_bias_new_list.append(input_conv_bias.data[i])
+                input_norm_weight_new_list.append(input_norm_weight.data[i])
+                input_norm_bias_new_list.append(input_norm_bias.data[i])
+                input_norm_running_mean_new_list.append(input_norm_running_mean.data[i])
+                input_norm_running_var_new_list.append(input_norm_running_var.data[i])
+                output_conv_weight_new_list.append(output_conv_weight.data[:, i])
+
+            input_conv_weight_new = nn.parameter.Parameter(torch.stack(input_conv_weight_new_list))
+            input_conv_bias_new = nn.parameter.Parameter(torch.stack(input_conv_bias_new_list))
+            input_norm_weight_new = nn.parameter.Parameter(torch.stack(input_norm_weight_new_list))
+            input_norm_bias_new = nn.parameter.Parameter(torch.stack(input_norm_bias_new_list))
+            input_norm_running_mean_new = nn.parameter.Parameter(torch.stack(input_norm_running_mean_new_list))
+            input_norm_running_var_new = nn.parameter.Parameter(torch.stack(input_norm_running_var_new_list))
+            output_conv_weight_new = nn.parameter.Parameter(torch.stack(output_conv_weight_new_list, dim=1))
+
+            res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
+            # example = torch.rand((1, 64, 32, 32))
+            # res_block(example)
+
+            res_block.conv1[0].weight = input_conv_weight_new
+            res_block.conv1[0].bias = input_conv_bias_new
+            res_block.conv1[1].weight = input_norm_weight_new
+            res_block.conv1[1].bias = input_norm_bias_new
+            res_block.conv1[1].running_mean = input_norm_running_mean_new
+            res_block.conv1[1].running_var = input_norm_running_var_new
+            # res_block.conv2[0].weight = output_conv_weight_new
+
+            # res_block.conv1[0].weight = input_conv_weight
+            # res_block.conv1[0].bias = input_conv_bias
+
+            # res_block.conv1[1].weight = input_norm_weight
+            # res_block.conv1[1].bias = input_norm_bias
+
+            res_block.conv1[1].num_batches_tracked = seq.conv1[1].num_batches_tracked
+            # res_block.conv1[1].running_mean = input_norm_running_mean
+            # res_block.conv1[1].running_var = input_norm_running_var
+            res_block.conv1[1].training = False
+
+            res_block.conv2[0].weight = output_conv_weight_new
+            res_block.conv2[0].bias = seq.conv2[0].bias
+
+            res_block.conv2[1].weight = seq.conv2[1].weight
+            res_block.conv2[1].bias = seq.conv2[1].bias
+
+            res_block.conv2[1].num_batches_tracked = seq.conv2[1].num_batches_tracked
+            res_block.conv2[1].training = False
+            res_block.conv2[1].running_mean = seq.conv2[1].running_mean
+            res_block.conv2[1].running_var = seq.conv2[1].running_var
+
+            # print("orig")
+            # orig_res = seq(example)
+            # print("new")
+            # new_res = res_block(example)
+            # compare = torch.sum(torch.abs(orig_res - new_res))
+            # print(compare)
+            layers.append(res_block)
+        self.recreation_features.append(layers_features)
+        return nn.Sequential(*layers)
+
+    def process_dataset_with_inner_data_extraction(self, dataset):
+        gc.collect()
+        self.cpu()
+        for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
+            for seq in l:
+                seq.is_processing = True
+                del seq.inner_data
+                gc.collect()
+                seq.inner_data = []
+        for images, labels in tqdm(dataset):
+            # images = images.to("cuda")
+            outputs = self(images)
+            del images, labels, outputs
+            gc.collect()
+        for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
+            for seq in l:
+                seq.is_processing = False
+        self.cuda()
+
+    def recreation_with_filter_inner_data_regularization(self, threshold: float, dataset):
+        assert 1.0 >= threshold >= 0.0
+        with torch.no_grad():
+            self.process_dataset_with_inner_data_extraction(dataset)
+            self.layer0 = self.recreate_layer_with_filter_inner_data_threshold(self.layer0, threshold)
+            self.layer1 = self.recreate_layer_with_filter_inner_data_threshold(self.layer1, threshold)
+            self.layer2 = self.recreate_layer_with_filter_inner_data_threshold(self.layer2, threshold)
+            self.layer3 = self.recreate_layer_with_filter_inner_data_threshold(self.layer3, threshold)
+
+    def recreation_with_filter_lowest_entropy_delete(self, number: int, num2delete):
+        assert 3 >= number >= 0
+        with torch.no_grad():
+            lowest_feature_value = 0
+            if number == 0:
+                layers = [self.layer0[0]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_entropy_delete_num(self.layer0[1], num2delete)
+                layers.append(res_block)
+                layers.append(self.layer0[2])
+                self.layer0 = nn.Sequential(*layers)
+            elif number == 1:
+                layers = [self.layer0[0], self.layer0[1]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_entropy_delete_num(self.layer0[2], num2delete)
+                layers.append(res_block)
+                self.layer0 = nn.Sequential(*layers)
+            elif number == 2:
+                layers = [self.layer3[0]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_entropy_delete_num(self.layer3[1], num2delete)
+                layers.append(res_block)
+                layers.append(self.layer3[2])
+                self.layer3 = nn.Sequential(*layers)
+            elif number == 3:
+                layers = [self.layer3[0], self.layer3[1]]
+                res_block, all_features, lowest_feature_value, size_value = \
+                    self.recreate_layer_with_filter_entropy_delete_num(self.layer3[2], num2delete)
+                layers.append(res_block)
+                self.layer3 = nn.Sequential(*layers)
+        return all_features, lowest_feature_value, size_value
+
+    def recreate_layer_with_filter_entropy_delete_num(self, seq, num2delete):
+        input_conv_weight = seq.conv1[0].weight
+        input_conv_bias = seq.conv1[0].bias
+        input_norm_weight = seq.conv1[1].weight
+        input_norm_bias = seq.conv1[1].bias
+        input_norm_running_var = seq.conv1[1].running_var
+        input_norm_running_mean = seq.conv1[1].running_mean
+        output_conv_weight = seq.conv2[0].weight
+        all_features = []
+        size_value = 0
+
+        features_of_inner_data = seq.get_features()
+        for i, inner_data_value in enumerate(features_of_inner_data):
+            all_features.append((i, float(inner_data_value)))
+
+        lowest_feature_value = list(map(lambda x: x[1], sorted(all_features, key=lambda x: x[1])))[:num2delete]
+        saved_features = list(filter(lambda x: x[1] not in lowest_feature_value, all_features))
+
+        in_size = input_conv_weight.size()
+        out_size = output_conv_weight.size()
+        input_conv_weight_new_list = []
+        input_conv_bias_new_list = []
+        input_norm_weight_new_list = []
+        input_norm_bias_new_list = []
+        input_norm_running_mean_new_list = []
+        input_norm_running_var_new_list = []
+        output_conv_weight_new_list = []
+
+        for j, pair in enumerate(saved_features):
+            i, _ = pair
+            input_conv_weight_new_list.append(input_conv_weight.data[i])
+            input_conv_bias_new_list.append(input_conv_bias.data[i])
+            input_norm_weight_new_list.append(input_norm_weight.data[i])
+            input_norm_bias_new_list.append(input_norm_bias.data[i])
+            input_norm_running_mean_new_list.append(input_norm_running_mean.data[i])
+            input_norm_running_var_new_list.append(input_norm_running_var.data[i])
+            output_conv_weight_new_list.append(output_conv_weight.data[:, i])
+
+        input_conv_weight_new = nn.parameter.Parameter(torch.stack(input_conv_weight_new_list))
+        input_conv_bias_new = nn.parameter.Parameter(torch.stack(input_conv_bias_new_list))
+        input_norm_weight_new = nn.parameter.Parameter(torch.stack(input_norm_weight_new_list))
+        input_norm_bias_new = nn.parameter.Parameter(torch.stack(input_norm_bias_new_list))
+        input_norm_running_mean_new = nn.parameter.Parameter(torch.stack(input_norm_running_mean_new_list))
+        input_norm_running_var_new = nn.parameter.Parameter(torch.stack(input_norm_running_var_new_list))
+        output_conv_weight_new = nn.parameter.Parameter(torch.stack(output_conv_weight_new_list, dim=1))
+
+        res_block = ResidualBlock(in_size[1], out_size[0], middle_channels=len(saved_features))
+
+        res_block.conv1[0].weight = input_conv_weight_new
+        res_block.conv1[0].bias = input_conv_bias_new
+        res_block.conv1[1].weight = input_norm_weight_new
+        res_block.conv1[1].bias = input_norm_bias_new
+        res_block.conv1[1].running_mean = input_norm_running_mean_new
+        res_block.conv1[1].running_var = input_norm_running_var_new
+
+        res_block.conv1[1].num_batches_tracked = seq.conv1[1].num_batches_tracked
+        res_block.conv1[1].training = False
+
+        res_block.conv2[0].weight = output_conv_weight_new
+        res_block.conv2[0].bias = seq.conv2[0].bias
+
+        res_block.conv2[1].weight = seq.conv2[1].weight
+        res_block.conv2[1].bias = seq.conv2[1].bias
+
+        res_block.conv2[1].num_batches_tracked = seq.conv2[1].num_batches_tracked
+        res_block.conv2[1].training = False
+        res_block.conv2[1].running_mean = seq.conv2[1].running_mean
+        res_block.conv2[1].running_var = seq.conv2[1].running_var
+
+        return res_block, all_features, lowest_feature_value, size_value
