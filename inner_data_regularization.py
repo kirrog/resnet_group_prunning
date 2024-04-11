@@ -12,8 +12,10 @@ aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
 output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_entropy")
+# output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_default")
 
-hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
+# hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
+hyperparams_list = [aug_4_block_reg_block_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_of_filter_steps = 10
 num_of_block_steps = 10
@@ -27,28 +29,35 @@ def get_new_model_instance():
 
 
 def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader, num_of_layers=4):
+    print(f"Model processing: {model_path.name}")
     model = get_new_model_instance()
     orig_state = torch.load(str(model_path))
     model.load_state_dict(orig_state)
     model.eval()
     model = model.cuda()
+    print("Init complete")
     orig_metrics = calc_metrics(model, test_loader, device)
+    acc_ = orig_metrics["acc"]
+    print(f"Original acc: {acc_}")
     step_cuttings = []
     sub_step_cuttings_list = []
-    model.process_dataset_with_inner_data_extraction(test_loader)
     mids = []
     for step in range(num_of_layers):
-        model = model.cpu()
+        model.process_dataset_with_inner_data_extraction(test_loader)
+        print("Features processed")
         all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(step, 1)
+        print("First features deleted")
         model.eval()
-        model = model.cuda()
         exp_metrics = calc_metrics(model, test_loader, device)
+        acc_ = exp_metrics["acc"]
+        print(f"First result acc: {acc_}")
         acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
         step_cuttings.append((step, exp_metrics, all_features,
                               lowest_feature_value, size_value, acc_drop))
         model = get_new_model_instance()
         model.load_state_dict(orig_state)
         model.eval()
+        model.cuda()
         sub_steps_cutting = []
         low = 0
         high = len(all_features)
@@ -56,17 +65,20 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
         while low <= high:
             mid = (high + low) // 2
             model.process_dataset_with_inner_data_extraction(test_loader)
-            model = model.cpu()
-            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(step, mid)
+            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(step,
+                                                                                                                mid)
+            print(f"Search mid: {mid} lowest feature num: {len(lowest_feature_value)} size: {size_value}")
             model.eval()
-            model = model.cuda()
             exp_metrics = calc_metrics(model, test_loader, device)
+            acc_ = exp_metrics["acc"]
+            print(f"Result acc: {acc_}")
             acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
             sub_steps_cutting.append((step, exp_metrics, all_features,
                                       lowest_feature_value, size_value, acc_drop))
             model = get_new_model_instance()
             model.load_state_dict(orig_state)
             model.eval()
+            model.cuda()
 
             if acc_drop < acceptable_loss_acc_value:
                 low = mid + 1
@@ -77,20 +89,23 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
         mids.append(mid)
         sub_step_cuttings_list.append(sub_steps_cutting)
 
-    model = model.cpu()
     acc_pool = 0.0
     results_cut = []
     for i, mid_num_v in enumerate(mids):
+        print(f"Step: {i} cut: {mid_num_v}")
         mid_num = mid_num_v // num_of_layers
         if mid_num > 0:
+            model.cuda()
             model.process_dataset_with_inner_data_extraction(test_loader)
-            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(i, mid_num)
+            all_features, lowest_feature_value, size_value = (model.
+                                                              recreation_with_filter_lowest_entropy_delete(i, mid_num))
             results_cut.append((all_features, lowest_feature_value, size_value, mid_num, i))
     model.eval()
-    model = model.cuda()
     exp_metrics = calc_metrics(model, test_loader, device)
     result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut,
               "search": sub_step_cuttings_list, "mids": mids}
+    acc_ = exp_metrics["acc"]
+    print(f"Result cutted model metrics: {acc_}")
     return {"orig": orig_metrics, "steps": step_cuttings, "results": result}
 
 

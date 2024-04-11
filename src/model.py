@@ -6,10 +6,11 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
-def rademacher_complexity(inner_data, dimension):
-    assert len(inner_data.size()) > dimension
-    sample = torch.randint(0, 1, inner_data.size())
+def rademacher_complexity(inner_data):
+    sample = torch.randint(0, 2, inner_data.size()).cuda()
     sample[sample == 0] = -1
+    output = torch.mul(inner_data, sample)
+    return output.mean(dim=(1, 2))
 
 
 def inner_data_entropy(inner_data):
@@ -24,7 +25,10 @@ def inner_data_entropy(inner_data):
 def inner_data_processing(inner_data, processing_function):
     output = []
     for element in range(inner_data.size()[0]):
-        output.append(processing_function(inner_data[element]).to("cpu"))
+        if type(output) is list:
+            output = processing_function(inner_data[element])
+        else:
+            output += processing_function(inner_data[element])
     return output
 
 
@@ -44,15 +48,21 @@ class ResidualBlock(nn.Module):
         self.relu = nn.ReLU()
         self.out_channels = out_channels
         self.inner_data = []
-        self.process_data = 0
+        self.process_data_number = 0
         self.is_processing = is_processing
+        self.features_calced = 0.0
 
     def forward(self, x):
         residual = x
         out = self.conv1(x)
         if self.is_processing:
-            self.process_data += out.size()[0]
-            self.inner_data += inner_data_processing(out, inner_data_entropy)
+            self.process_data_number += out.size()[0]
+            # feature = inner_data_processing(out, rademacher_complexity)
+            feature = inner_data_processing(out, inner_data_entropy)
+            if type(self.inner_data) is list:
+                self.inner_data = feature
+            else:
+                self.inner_data += feature
         # print(torch.mean(out))
         out = self.conv2(out)
         # print(torch.mean(out))
@@ -65,7 +75,7 @@ class ResidualBlock(nn.Module):
         return out
 
     def get_features(self):
-        return torch.mean(torch.cat([torch.unsqueeze(x, dim=0) for x in self.inner_data], dim=0), dim=0)
+        return torch.tensor(self.inner_data) / self.process_data_number
 
 
 class ResNet(nn.Module):
@@ -495,23 +505,22 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def process_dataset_with_inner_data_extraction(self, dataset):
-        gc.collect()
-        self.cpu()
-        for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
-            for seq in l:
-                seq.is_processing = True
-                del seq.inner_data
-                gc.collect()
-                seq.inner_data = []
-        for images, labels in tqdm(dataset):
-            # images = images.to("cuda")
-            outputs = self(images)
-            del images, labels, outputs
+        with torch.no_grad():
             gc.collect()
-        for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
-            for seq in l:
-                seq.is_processing = False
-        self.cuda()
+            for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
+                for seq in l:
+                    seq.is_processing = True
+                    del seq.inner_data
+                    gc.collect()
+                    seq.inner_data = []
+            for images, labels in dataset:
+                images = images.to("cuda")
+                outputs = self(images)
+                del images, labels, outputs
+                gc.collect()
+            for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
+                for seq in l:
+                    seq.is_processing = False
 
     def recreation_with_filter_inner_data_regularization(self, threshold: float, dataset):
         assert 1.0 >= threshold >= 0.0
@@ -567,6 +576,7 @@ class ResNet(nn.Module):
 
         features_of_inner_data = seq.get_features()
         for i, inner_data_value in enumerate(features_of_inner_data):
+            size_value = self.calc_length(input_conv_weight[i])
             all_features.append((i, float(inner_data_value)))
 
         lowest_feature_value = list(map(lambda x: x[1], sorted(all_features, key=lambda x: x[1])))[:num2delete]
