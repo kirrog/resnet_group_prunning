@@ -45,10 +45,13 @@ def weights_correlation(data_metrics, default_dict, entropy_dict, name=""):
             plt.xlabel("Group number")
             plt.ylabel("Feature value")
             plt.title(f"Exp: {name} type: {k} ResBlock number: {label_num}")
-            plt.show()
+            # plt.show()
+            plt.savefig(f"../graphics_data/correlations/exp_{name}_type_{k}_num_{label_num}.png")
+            plt.close()
 
 
 def accuracy_cut_coefficient_graphics():
+    Path("../graphics_data/correlations").mkdir(exist_ok=True, parents=True)
     o_p, b_p, g_p = load_metrics(Path("/home/kirrog/projects/FQWB/model/stats_pool"))
     o_d, b_d, g_d = load_metrics(Path("/home/kirrog/projects/FQWB/model/stats_radamcher_default"))
     o_e, b_e, g_e = load_metrics(Path("/home/kirrog/projects/FQWB/model/stats_radamcher_entropy"))

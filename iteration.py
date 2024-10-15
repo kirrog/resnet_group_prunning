@@ -5,7 +5,7 @@ import torch
 from torchsummary import summary
 from tqdm import tqdm
 
-from dataset_loader import data_loader
+from src.dataset_loader import data_loader
 from metrics import calc_metrics
 from src.model import ResNet, ResidualBlock
 

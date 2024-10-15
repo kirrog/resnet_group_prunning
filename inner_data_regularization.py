@@ -4,18 +4,19 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from dataset_loader import data_loader
+from src.dataset_loader import data_loader
 from metrics import calc_metrics
 from src.model import ResNet, ResidualBlock
 
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
 aug_4_block_reg_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_block")
 aug_4_block_reg_group_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block_reg_group")
-output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_entropy")
+output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_minus_entropy")
+# output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_entropy")
 # output_path = Path("/home/kirrog/projects/FQWB/model/stats_radamcher_default")
 
-# hyperparams_list = [aug_4_block_path, aug_4_block_reg_group_path, aug_4_block_reg_block_path]
-hyperparams_list = [aug_4_block_reg_block_path]
+hyperparams_list = [aug_4_block_path, aug_4_block_reg_block_path, aug_4_block_reg_group_path]
+# hyperparams_list = [aug_4_block_reg_block_path]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 num_of_filter_steps = 10
 num_of_block_steps = 10
@@ -119,7 +120,9 @@ def iterate_through_experiment_lowest_entropy_delete(directory_models: Path, dir
     print(f"Found: {bef}, calc: {aft}")
     for model_path in tqdm(models_paths, desc="models"):
         stats_output = directory_stats / (model_path.name[:-4] + ".pkl")
+        print(f"Work on: {model_path.name}")
         if stats_output.exists():
+            print("Exists")
             continue
         filter_metrics = experiment_on_model_with_lowest_filter_entropy(model_path, test_loader)
         result = {"filter": filter_metrics}

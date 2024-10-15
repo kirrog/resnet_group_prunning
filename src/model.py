@@ -563,7 +563,7 @@ class ResNet(nn.Module):
                 self.layer3 = nn.Sequential(*layers)
         return all_features, lowest_feature_value, size_value
 
-    def recreate_layer_with_filter_entropy_delete_num(self, seq, num2delete):
+    def recreate_layer_with_filter_entropy_delete_num(self, seq, num2delete, invert=True):
         input_conv_weight = seq.conv1[0].weight
         input_conv_bias = seq.conv1[0].bias
         input_norm_weight = seq.conv1[1].weight
@@ -579,7 +579,8 @@ class ResNet(nn.Module):
             size_value = self.calc_length(input_conv_weight[i])
             all_features.append((i, float(inner_data_value)))
 
-        lowest_feature_value = list(map(lambda x: x[1], sorted(all_features, key=lambda x: x[1])))[:num2delete]
+        lowest_feature_value = list(map(lambda x: x[1],
+                                        sorted(all_features, key=lambda x: x[1], reverse=invert)))[:num2delete]
         saved_features = list(filter(lambda x: x[1] not in lowest_feature_value, all_features))
 
         in_size = input_conv_weight.size()

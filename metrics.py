@@ -6,7 +6,7 @@ import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, \
     confusion_matrix
 
-from dataset_loader import data_loader
+from src.dataset_loader import data_loader
 from src.model import ResNet, ResidualBlock
 
 

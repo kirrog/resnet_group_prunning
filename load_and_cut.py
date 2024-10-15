@@ -5,7 +5,7 @@ import torch
 from torchsummary import summary
 from tqdm import tqdm
 
-from dataset_loader import data_loader
+from src.dataset_loader import data_loader
 from src.model import ResidualBlock, ResNet
 
 threshold = 0.02

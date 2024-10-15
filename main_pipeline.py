@@ -4,7 +4,7 @@ from pathlib import Path
 import torch.nn as nn
 from tqdm import tqdm
 
-from dataset_loader import data_loader
+from src.dataset_loader import data_loader
 from regularizations import *
 from src.model import ResNet, ResidualBlock
 from validation import validate_model
