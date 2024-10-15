@@ -19,4 +19,11 @@ def create_logger(name: str, use_file_logs_writting: bool = True, std_out_or_err
     handler.setFormatter(formatter)
     cstm_logger.addHandler(handler)
 
-    return logging.Logger(name)
+    return cstm_logger
+
+if __name__ == "__main__":
+    logger = create_logger("test_logger", use_file_logs_writting=False, std_out_or_err=True)
+    logger.error("Error")
+    logger.warning("Warning")
+    logger.info("INFO")
+    logger.debug("DEBUG")

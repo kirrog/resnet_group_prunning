@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -11,6 +10,8 @@ from src.loggers import create_logger
 
 logger = create_logger(__name__)
 
+
+# logger.setLevel(logging.DEBUG)
 
 class Cifar10CSTMDatasetCreator:
     def __init__(self, data_dir: Path = Path("/media/kirrog/data/data/fqwb_data/data/cifar_10"),
@@ -37,7 +38,7 @@ class Cifar10CSTMDatasetCreator:
         logger.info("Cifar10DataCreator init")
 
     def create_loaders(self, create_test_dataloader: bool = False) -> Dict[str, torch.utils.data.DataLoader]:
-        logger.info(f"Create logger: is_test:{create_test_dataloader}")
+        logger.info(f"Create dataloader: is_test:{create_test_dataloader}")
         normalize = transforms.Normalize(
             mean=[0.4914, 0.4822, 0.4465],
             std=[0.2023, 0.1994, 0.2010],
@@ -183,8 +184,6 @@ def data_loader(data_dir,
 
 
 if __name__ == "__main__":
-    logger = create_logger(__name__, True, False)
-    logger.setLevel(logging.DEBUG)
     cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
     test_dataloader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
     train_valid_dataloaders = cifar10_dataset_creator.create_loaders()
