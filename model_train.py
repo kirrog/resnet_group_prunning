@@ -135,18 +135,30 @@ class ModelTrainer:
 
 experiments_list = [
     # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, True,
+    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', filter_regularization_loss_from_weights, (1e-10, 1e-9), 10, 50, 1e-3,
+     1e-8, True,
      Path("./data/fqwb_data/models/base_model.bin")],
-    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', (1e-9, 1e-8), 10, 50, 1e-3, 1e-8, True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', (1e-8, 1e-7), 10, 50, 1e-3, 1e-8, True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', (1e-7, 1e-6), 10, 50, 1e-3, 1e-8, True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', (1e-6, 1e-5), 10, 50, 1e-3, 1e-8, True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', (1e-5, 1e-4), 10, 50, 1e-3, 1e-8, True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', filter_regularization_loss_from_weights, (1e-9, 1e-8), 10, 50, 1e-3,
+     1e-8,
+     True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', filter_regularization_loss_from_weights, (1e-8, 1e-7), 10, 50, 1e-3,
+     1e-8,
+     True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', filter_regularization_loss_from_weights, (1e-7, 1e-6), 10, 50, 1e-3,
+     1e-8,
+     True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', filter_regularization_loss_from_weights, (1e-6, 1e-5), 10, 50, 1e-3,
+     1e-8,
+     True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', filter_regularization_loss_from_weights, (1e-5, 1e-4), 10, 50, 1e-3,
+     1e-8,
+     True, None],
 ]
 
 if __name__ == "__main__":
     for (DatasetCreatorClass,
          experiment_name,
+         prunning_func,
          pruning_coefficients,
          num_classes,
          num_epochs,
@@ -174,7 +186,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         if use_group_loss:
-            prunner_obj = Prunner(model, pruning_coefficients, device)
+            prunner_obj = Prunner(model, pruning_coefficients, device, prunning_func)
         else:
             prunner_obj = None
         print(f"Using pruner: {prunner_obj}")
