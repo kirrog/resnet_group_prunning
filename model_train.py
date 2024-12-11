@@ -1,6 +1,6 @@
 import gc
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple, Optional
 
 import torch.nn as nn
 import torch.optim
@@ -13,6 +13,7 @@ from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.dirs_struct import DirsStruct
 from src.loggers import create_logger
 from src.model import ResNet, ResidualBlock
+from src.prunner import Prunner
 from validation import validate_model
 
 cstm_logger = create_logger("train")
@@ -25,18 +26,18 @@ def clear_cache():
 
 class ModelTrainer:
     def __init__(self, model: nn.Module,
+                 prunner_obj: Optional[Prunner],
                  dataloaders_dict: Dict[str, torch.utils.data.DataLoader],
                  model_out_dir: Path,
                  criterion,
                  optimizer: Optimizer,
-                 weight_coef_l1: float,
-                 weight_coef_l2: float,
+                 pruning_coefficients: Tuple[float],
                  writer: SummaryWriter,
                  batch_size: int,
                  num_classes: int,
                  num_epochs: int,
                  device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-                 loss_up_period:int = 3
+                 loss_up_period: int = 3
                  ):
         cstm_logger.info("Creating trainer")
         self.model = model
@@ -51,8 +52,7 @@ class ModelTrainer:
         self.model_out_dir = model_out_dir
         self.criterion = criterion
         self.optimizer = optimizer
-        self.weight_coef_l1 = weight_coef_l1
-        self.weight_coef_l2 = weight_coef_l2
+        self.pruning_coefficients = pruning_coefficients
         self.writer = writer
         self.batch_size = batch_size
         self.num_classes = num_classes
@@ -60,27 +60,16 @@ class ModelTrainer:
         self.device = device
         self.model = model.to(self.device)
         self.loss_up_period = loss_up_period
+        self.prunner_obj = prunner_obj
         cstm_logger.info("Trainer created")
 
-    def train(self, use_group_loss_component: bool = False):
-        weight_coef_l1 = torch.as_tensor(self.weight_coef_l1).to(self.device)
-        weight_coef_l2 = torch.as_tensor(self.weight_coef_l2).to(self.device)
+    def train(self):
 
         # Train the model
         total_step = len(self.dataloader_train)
 
-        l = 0
-        elems = []
-        last_elem = []
-        if use_group_loss_component:
-            for param in self.model.parameters():
-                if l % 4 == 0:
-                    last_elem = []
-                last_elem.append(param)
-                if l % 4 == 3:
-                    elems.append(last_elem)
-                l += 1
         valid_last_losses = []
+        train_last_losses = []
         for epoch in range(self.num_epochs):
             loss_accum = 0.0
             loss_reg_accum = 0.0
@@ -101,15 +90,8 @@ class ModelTrainer:
                 loss = self.criterion(outputs, labels)
                 loss_accum += float(loss.item())
 
-                if use_group_loss_component:
-                    for params in elems:
-                        weights, bias, norm_coef, norm_bias = params
-                        loss += block_regularization_loss_from_weights(weights,
-                                                                       bias,
-                                                                       norm_coef,
-                                                                       norm_bias,
-                                                                       weight_coef_l1,
-                                                                       weight_coef_l2)
+                if prunner_obj:
+                    prunner_obj.prune(loss)
                 loss_reg_accum += float(loss.item())
                 # Backward and optimize
                 # May be zero grad can be deleted?
@@ -122,6 +104,7 @@ class ModelTrainer:
             acc_train = correct / total
             acc, valid_loss = validate_model(self.model, self.dataloader_valid, self.device, self.criterion)
 
+            train_last_losses.append(loss_accum)
             valid_last_losses.append(valid_loss)
 
             self.writer.add_scalar("Loss/train", loss_accum, epoch)
@@ -134,6 +117,10 @@ class ModelTrainer:
             self.writer.add_scalar("Mean_weights", calc_mean_weights(self.model), epoch)
 
             torch.save(self.model.state_dict(), str(self.model_out_dir / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
+            if min(train_last_losses[-self.loss_up_period - 1:-1]) > train_last_losses[-1] and max(
+                    valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
+                print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
+                break
 
         acc, test_loss = validate_model(self.model, self.dataloader_test, self.device, self.criterion)
         print(f'Accuracy of the network on the {len(self.dataloader_test)} '
@@ -147,25 +134,26 @@ class ModelTrainer:
 
 
 experiments_list = [
-    [Cifar10CSTMDatasetCreator, 'cifar10', 1e-10, 1e-9, 10, 50, 1e-3, 1e-8, False],
-    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', 1e-10, 1e-9, 10, 50, 1e-3, 1e-8, True],
-    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', 1e-9, 1e-8, 10, 50, 1e-3, 1e-8, True],
-    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', 1e-8, 1e-7, 10, 50, 1e-3, 1e-8, True],
-    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', 1e-7, 1e-6, 10, 50, 1e-3, 1e-8, True],
-    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', 1e-6, 1e-5, 10, 50, 1e-3, 1e-8, True],
-    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', 1e-5, 1e-4, 10, 50, 1e-3, 1e-8, True],
+    # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, True,
+     Path("./data/fqwb_data/models/base_model.bin")],
+    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', (1e-9, 1e-8), 10, 50, 1e-3, 1e-8, True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', (1e-8, 1e-7), 10, 50, 1e-3, 1e-8, True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', (1e-7, 1e-6), 10, 50, 1e-3, 1e-8, True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', (1e-6, 1e-5), 10, 50, 1e-3, 1e-8, True, None],
+    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', (1e-5, 1e-4), 10, 50, 1e-3, 1e-8, True, None],
 ]
 
 if __name__ == "__main__":
     for (DatasetCreatorClass,
          experiment_name,
-         weight_coef_l1,
-         weight_coef_l2,
+         pruning_coefficients,
          num_classes,
          num_epochs,
          learning_rate,
          weight_decay,
-         use_group_loss) in experiments_list:
+         use_group_loss,
+         initialisation_path) in experiments_list:
         dirs_struct_entity = DirsStruct()
         model_experiment_path, stats_experiment_path = dirs_struct_entity.get_stats__and_model_save_path(
             experiment_name)
@@ -177,16 +165,36 @@ if __name__ == "__main__":
         train_valid_dataloaders["test"] = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 
         model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
+        print(f"Loading model state from: {initialisation_path}")
+        if initialisation_path and initialisation_path.exists():
+            model.load_state_dict(torch.load(initialisation_path, weights_only=True))
 
         # Loss and optimizer
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
+        if use_group_loss:
+            prunner_obj = Prunner(model, pruning_coefficients, device)
+        else:
+            prunner_obj = None
+        print(f"Using pruner: {prunner_obj}")
+
         writer = SummaryWriter(str(stats_experiment_path), filename_suffix="tsbrd")
 
         model_trainer = ModelTrainer(
-            model, train_valid_dataloaders, model_experiment_path, criterion, optimizer, weight_coef_l1, weight_coef_l2,
-            writer, batch_size, num_classes, num_epochs, device
+            model,
+            prunner_obj,
+            train_valid_dataloaders,
+            model_experiment_path,
+            criterion,
+            optimizer,
+            pruning_coefficients,
+            writer,
+            batch_size,
+            num_classes,
+            num_epochs,
+            device,
+            5
         )
 
-        model_trainer.train(use_group_loss_component=use_group_loss)
+        model_trainer.train()
