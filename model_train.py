@@ -117,7 +117,7 @@ class ModelTrainer:
             self.writer.add_scalar("Mean_weights", calc_mean_weights(self.model), epoch)
 
             torch.save(self.model.state_dict(), str(self.model_out_dir / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
-            if min(train_last_losses[-self.loss_up_period - 1:-1]) > train_last_losses[-1] and max(
+            if epoch > 0 and min(train_last_losses[-self.loss_up_period - 1:-1]) > train_last_losses[-1] and max(
                     valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
                 print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
                 break
