@@ -35,7 +35,8 @@ class ModelTrainer:
                  batch_size: int,
                  num_classes: int,
                  num_epochs: int,
-                 device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                 device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+                 loss_up_period:int = 3
                  ):
         cstm_logger.info("Creating trainer")
         self.model = model
@@ -58,6 +59,7 @@ class ModelTrainer:
         self.num_epochs = num_epochs
         self.device = device
         self.model = model.to(self.device)
+        self.loss_up_period = loss_up_period
         cstm_logger.info("Trainer created")
 
     def train(self, use_group_loss_component: bool = False):
@@ -78,7 +80,7 @@ class ModelTrainer:
                 if l % 4 == 3:
                     elems.append(last_elem)
                 l += 1
-
+        valid_last_losses = []
         for epoch in range(self.num_epochs):
             loss_accum = 0.0
             loss_reg_accum = 0.0
@@ -117,8 +119,10 @@ class ModelTrainer:
                 del images, labels, outputs
                 clear_cache()
 
-            acc, valid_loss = validate_model(self.model, self.dataloader_valid, self.device, self.criterion)
             acc_train = correct / total
+            acc, valid_loss = validate_model(self.model, self.dataloader_valid, self.device, self.criterion)
+
+            valid_last_losses.append(valid_loss)
 
             self.writer.add_scalar("Loss/train", loss_accum, epoch)
             self.writer.add_scalar("Loss_reg/train", loss_reg_accum, epoch)
@@ -142,34 +146,47 @@ class ModelTrainer:
         clear_cache()
 
 
+experiments_list = [
+    [Cifar10CSTMDatasetCreator, 'cifar10', 1e-10, 1e-9, 10, 50, 1e-3, 1e-8, False],
+    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', 1e-10, 1e-9, 10, 50, 1e-3, 1e-8, True],
+    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', 1e-9, 1e-8, 10, 50, 1e-3, 1e-8, True],
+    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', 1e-8, 1e-7, 10, 50, 1e-3, 1e-8, True],
+    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', 1e-7, 1e-6, 10, 50, 1e-3, 1e-8, True],
+    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', 1e-6, 1e-5, 10, 50, 1e-3, 1e-8, True],
+    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', 1e-5, 1e-4, 10, 50, 1e-3, 1e-8, True],
+]
+
 if __name__ == "__main__":
-    dirs_struct_entity = DirsStruct()
-    model_experiment_path, stats_experiment_path = dirs_struct_entity.get_stats__and_model_save_path("module_test")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    for (DatasetCreatorClass,
+         experiment_name,
+         weight_coef_l1,
+         weight_coef_l2,
+         num_classes,
+         num_epochs,
+         learning_rate,
+         weight_decay,
+         use_group_loss) in experiments_list:
+        dirs_struct_entity = DirsStruct()
+        model_experiment_path, stats_experiment_path = dirs_struct_entity.get_stats__and_model_save_path(
+            experiment_name)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    batch_size = 456
-    cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
-    train_valid_dataloaders = cifar10_dataset_creator.create_loaders()
-    train_valid_dataloaders["test"] = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+        batch_size = 456
+        cifar10_dataset_creator = DatasetCreatorClass()
+        train_valid_dataloaders = cifar10_dataset_creator.create_loaders()
+        train_valid_dataloaders["test"] = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 
-    weight_coef_l1 = 1e-10
-    weight_coef_l2 = 1e-9
-    num_classes = 10
-    num_epochs = 50
-    learning_rate = 1e-3
-    weight_decay = 1e-8
+        model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
 
-    model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
+        # Loss and optimizer
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        writer = SummaryWriter(str(stats_experiment_path), filename_suffix="tsbrd")
 
-    writer = SummaryWriter(str(stats_experiment_path), filename_suffix="tsbrd")
+        model_trainer = ModelTrainer(
+            model, train_valid_dataloaders, model_experiment_path, criterion, optimizer, weight_coef_l1, weight_coef_l2,
+            writer, batch_size, num_classes, num_epochs, device
+        )
 
-    model_trainer = ModelTrainer(
-        model, train_valid_dataloaders, model_experiment_path, criterion, optimizer, weight_coef_l1, weight_coef_l2,
-        writer, batch_size, num_classes, num_epochs, device
-    )
-
-    model_trainer.train()
+        model_trainer.train(use_group_loss_component=use_group_loss)
