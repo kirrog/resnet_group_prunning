@@ -58,9 +58,11 @@ def rademacher_inner_data_loss(param, coef):
         accum += torch.max(torch.tensor(l))
     return accum * coef / n
 
+
 # need backward calced firstly
 def calc_grad_abs_mean_weights():
     pass
+
 
 def calc_mean_weights(model):
     return sum([float(torch.sum(x) / x.numel()) for x in model.parameters()])
@@ -89,6 +91,17 @@ def filter_regularization_loss_from_entropy(weights, bias, norm_coef, norm_bias,
     return torch.sum(res)
 
 
+def filter_regularization_loss_from_entropy_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
+    wcl1, wcl2 = coefficients
+    res = torch.zeros((1)).to(device)
+    for i in range(weights.size()[0]):
+        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
+        res += l1_l2_loss(bias[i], wcl1, wcl2)
+        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
+        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+    return -torch.sum(res)
+
+
 def filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bias, coefficients, device):
     wcl1, wcl2 = coefficients
     res = torch.zeros((1)).to(device)
@@ -100,7 +113,7 @@ def filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bi
     return torch.sum(res)
 
 
-def filter_regularization_loss_from_grad_(weights, bias, norm_coef, norm_bias, coefficients, device):
+def filter_regularization_loss_from_rademacher_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
     wcl1, wcl2 = coefficients
     res = torch.zeros((1)).to(device)
     for i in range(weights.size()[0]):
@@ -108,7 +121,7 @@ def filter_regularization_loss_from_grad_(weights, bias, norm_coef, norm_bias, c
         res += l1_l2_loss(bias[i], wcl1, wcl2)
         res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
         res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
-    return torch.sum(res)
+    return -torch.sum(res)
 
 
 def block_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, coefficients, device):

@@ -1,4 +1,5 @@
 import gc
+import os
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 
@@ -24,6 +25,14 @@ def clear_cache():
     gc.collect()
 
 
+def cut_worst_epoches(experiment_path: Path, last_amount: int):
+    epoches_list = list(sorted([(x, float(str(x.name).split("acc_")[-1][:-4])) for x in experiment_path.glob("*.bin")],
+                               key=lambda x: x[1]))
+    to_delete = epoches_list[:-last_amount]
+    for epoch_bin in to_delete:
+        os.remove(epoch_bin[0])
+
+
 class ModelTrainer:
     def __init__(self, model: nn.Module,
                  prunner_obj: Optional[Prunner],
@@ -37,7 +46,8 @@ class ModelTrainer:
                  num_classes: int,
                  num_epochs: int,
                  device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-                 loss_up_period: int = 3
+                 loss_up_period: int = 3,
+                 cut_worst_amount: int = 10
                  ):
         cstm_logger.info("Creating trainer")
         self.model = model
@@ -60,6 +70,7 @@ class ModelTrainer:
         self.device = device
         self.model = model.to(self.device)
         self.loss_up_period = loss_up_period
+        self.cut_worst_amount = cut_worst_amount
         self.prunner_obj = prunner_obj
         cstm_logger.info("Trainer created")
 
@@ -117,21 +128,31 @@ class ModelTrainer:
             self.writer.add_scalar("Mean_weights", calc_mean_weights(self.model), epoch)
 
             torch.save(self.model.state_dict(), str(self.model_out_dir / f"ep_{epoch:03d}_acc_{acc:04f}.bin"))
+
+            cut_worst_epoches(self.model_out_dir, self.cut_worst_amount)
+
             if epoch > 0 and min(train_last_losses[-self.loss_up_period - 1:-1]) > train_last_losses[-1] and max(
                     valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
                 print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
                 break
-
-        acc, test_loss = validate_model(self.model, self.dataloader_test, self.device, self.criterion)
-        print(f'Accuracy of the network on the {len(self.dataloader_test)} '
-              f'test batches: {100 * acc} Loss: {test_loss:04f}')
-        torch.save(self.model.state_dict(), str(self.model_out_dir / f"result_acc_{acc:04f}.bin"))
 
     def __del__(self):
         del self.model
         del self.optimizer
         clear_cache()
 
+
+dataset_list = [Cifar10CSTMDatasetCreator]
+filter_regularization_losses_list = [
+    filter_regularization_loss_from_weights,
+    filter_regularization_loss_from_entropy,
+    filter_regularization_loss_from_entropy_inv,
+    filter_regularization_loss_from_rademacher,
+    filter_regularization_loss_from_rademacher_inv
+]
+coefs = [
+    (1e-10, 1e-9), (1e-9, 1e-8), (1e-8, 1e-7), (1e-7, 1e-6), (1e-6, 1e-5), (1e-5, 1e-4)
+]
 
 experiments_list = [
     # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
