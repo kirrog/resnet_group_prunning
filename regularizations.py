@@ -21,7 +21,10 @@ def l1_l2_loss_biased(param, wcl1, wcl2):
 @torch.jit.script
 def entropy_loss(param, coef):
     d = torch.abs(param)
-    return - d * torch.log(d) * coef / d.numel()
+    # d[d == 0.0] = coef
+    d += coef
+    entr = torch.sum(torch.abs(- d * torch.log(d) * coef)) / d.numel()
+    return entr
 
 
 # iterate by version of oi and calc mean - mat ojid
@@ -43,25 +46,20 @@ def rademacher_weight_loss(param, coef):
     return accum * coef / n
 
 
-@torch.jit.script
-def rademacher_inner_data_loss(param, coef):
-    n = 10
-    accum = 0
-    for i in range(n):
-
-        o = torch.randint(0, 1, param.size())
-        o[o == 0] = -1.0
-        l = []
-        for j in range(param.size()[1]):
-            d = param[:, j]
-            l.append(torch.sum(o * d) / d.numel())
-        accum += torch.max(torch.tensor(l))
-    return accum * coef / n
-
-
-# need backward calced firstly
-def calc_grad_abs_mean_weights():
-    pass
+# @torch.jit.script
+# def rademacher_inner_data_loss(param, coef):
+#     n = 10
+#     accum = 0
+#     for i in range(n):
+#
+#         o = torch.randint(0, 1, param.size())
+#         o[o == 0] = -1.0
+#         l = []
+#         for j in range(param.size()[1]):
+#             d = param[:, j]
+#             l.append(torch.sum(o * d) / d.numel())
+#         accum += torch.max(torch.tensor(l))
+#     return accum * coef / n
 
 
 def calc_mean_weights(model):
@@ -81,46 +79,46 @@ def filter_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias,
 
 
 def filter_regularization_loss_from_entropy(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1, wcl2 = coefficients
+    wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
     for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
-        res += l1_l2_loss(bias[i], wcl1, wcl2)
-        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
-        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+        res += entropy_loss(weights[i], wcl1)
+        res += entropy_loss(bias[i], wcl1)
+        res += entropy_loss(norm_coef[i], wcl1)
+        res += entropy_loss(norm_bias[i], wcl1)
     return torch.sum(res)
 
 
 def filter_regularization_loss_from_entropy_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1, wcl2 = coefficients
+    wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
     for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
-        res += l1_l2_loss(bias[i], wcl1, wcl2)
-        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
-        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+        res += entropy_loss(weights[i], wcl1)
+        res += entropy_loss(bias[i], wcl1)
+        res += entropy_loss(norm_coef[i], wcl1)
+        res += entropy_loss(norm_bias[i], wcl1)
     return -torch.sum(res)
 
 
 def filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1, wcl2 = coefficients
+    wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
     for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
-        res += l1_l2_loss(bias[i], wcl1, wcl2)
-        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
-        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+        res += rademacher_weight_loss(weights[i], wcl1)
+        res += rademacher_weight_loss(bias[i], wcl1)
+        res += rademacher_weight_loss(norm_coef[i], wcl1)
+        res += rademacher_weight_loss(norm_bias[i], wcl1)
     return torch.sum(res)
 
 
 def filter_regularization_loss_from_rademacher_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1, wcl2 = coefficients
+    wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
     for i in range(weights.size()[0]):
-        res += l1_l2_loss(weights[i], wcl1, wcl2) / (reduce(lambda a, b: a * b, weights[i].size()))
-        res += l1_l2_loss(bias[i], wcl1, wcl2)
-        res += l1_l2_loss_biased(norm_coef[i], wcl1, wcl2)
-        res += l1_l2_loss(norm_bias[i], wcl1, wcl2)
+        res += rademacher_weight_loss(weights[i], wcl1)
+        res += rademacher_weight_loss(bias[i], wcl1)
+        res += rademacher_weight_loss(norm_coef[i], wcl1)
+        res += rademacher_weight_loss(norm_bias[i], wcl1)
     return -torch.sum(res)
 
 

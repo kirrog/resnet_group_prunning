@@ -13,6 +13,13 @@ def rademacher_complexity(inner_data):
     return output.mean(dim=(1, 2))
 
 
+def rademacher_complexity_inv(inner_data):
+    sample = torch.randint(0, 2, inner_data.size()).cuda()
+    sample[sample == 0] = -1
+    output = torch.mul(inner_data, sample)
+    return output.mean(dim=(1, 2))
+
+
 def inner_data_entropy(inner_data):
     lsm = nn.LogSoftmax()
     log_probs = lsm(inner_data)
@@ -20,6 +27,21 @@ def inner_data_entropy(inner_data):
     p_log_p = log_probs * probs
     entropy = -p_log_p.mean(dim=(1, 2))
     return entropy
+
+
+def inner_data_entropy_inv(inner_data):
+    lsm = nn.LogSoftmax()
+    log_probs = lsm(inner_data)
+    probs = torch.exp(log_probs)
+    p_log_p = log_probs * probs
+    entropy = -p_log_p.mean(dim=(1, 2))
+    return entropy
+
+
+def inner_data_weights(inner_data):
+    res = torch.sum(torch.abs(inner_data))
+    res += torch.sum(inner_data ** 2)
+    return res
 
 
 def inner_data_processing(inner_data, processing_function):

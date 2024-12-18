@@ -1,6 +1,8 @@
 import gc
+import json
 import os
 from pathlib import Path
+from pprint import pprint
 from typing import Dict, Tuple, Optional
 
 import torch.nn as nn
@@ -131,7 +133,7 @@ class ModelTrainer:
 
             cut_worst_epoches(self.model_out_dir, self.cut_worst_amount)
 
-            if epoch > 0 and min(train_last_losses[-self.loss_up_period - 1:-1]) > train_last_losses[-1] and max(
+            if epoch > 0 and min(train_last_losses[-self.loss_up_period - 1:-1]) >= train_last_losses[-1] and max(
                     valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
                 print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
                 break
@@ -142,41 +144,86 @@ class ModelTrainer:
         clear_cache()
 
 
-dataset_list = [Cifar10CSTMDatasetCreator]
-filter_regularization_losses_list = [
-    filter_regularization_loss_from_weights,
-    filter_regularization_loss_from_entropy,
-    filter_regularization_loss_from_entropy_inv,
-    filter_regularization_loss_from_rademacher,
-    filter_regularization_loss_from_rademacher_inv
+dataset_list = [("cifar10", Cifar10CSTMDatasetCreator)]
+
+filter_regularization_2coefs_losses_list = [
+    ('weights', filter_regularization_loss_from_weights)
 ]
-coefs = [
+
+filter_regularization_1coefs_losses_list = [
+    ('entropy', filter_regularization_loss_from_entropy),
+    ('entropy-inv', filter_regularization_loss_from_entropy_inv),
+    ('radem', filter_regularization_loss_from_rademacher),
+    ('radem-inv', filter_regularization_loss_from_rademacher_inv)
+]
+
+coefs2 = [
     (1e-10, 1e-9), (1e-9, 1e-8), (1e-8, 1e-7), (1e-7, 1e-6), (1e-6, 1e-5), (1e-5, 1e-4)
 ]
-
-experiments_list = [
-    # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-10-9', filter_regularization_loss_from_weights, (1e-10, 1e-9), 10, 50, 1e-3,
-     1e-8, True,
-     Path("./data/fqwb_data/models/base_model.bin")],
-    [Cifar10CSTMDatasetCreator, 'cifar10-9-8', filter_regularization_loss_from_weights, (1e-9, 1e-8), 10, 50, 1e-3,
-     1e-8,
-     True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-8-7', filter_regularization_loss_from_weights, (1e-8, 1e-7), 10, 50, 1e-3,
-     1e-8,
-     True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-7-6', filter_regularization_loss_from_weights, (1e-7, 1e-6), 10, 50, 1e-3,
-     1e-8,
-     True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-6-5', filter_regularization_loss_from_weights, (1e-6, 1e-5), 10, 50, 1e-3,
-     1e-8,
-     True, None],
-    [Cifar10CSTMDatasetCreator, 'cifar10-5-4', filter_regularization_loss_from_weights, (1e-5, 1e-4), 10, 50, 1e-3,
-     1e-8,
-     True, None],
+coefs1 = [
+    (1e-10,), (1e-9,), (1e-8,), (1e-7,), (1e-6,), (1e-5,), (1e-4,)
 ]
 
+init_weights = [
+    None,
+    Path("/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin")  # V1
+]
+
+experiments_list = []
+for name, dataset_class_ in dataset_list:
+    for init_path in init_weights:
+        for func_name, regs_2coefs in filter_regularization_2coefs_losses_list:
+            for coefs_2_instance in coefs2:
+                experiment_name = (f"{name}__"
+                                   f"{'v1' if init_path else 'none'}__"
+                                   f"{func_name}__"
+                                   f"{'_'.join([str(x) for x in coefs_2_instance])}")
+                experiment = [dataset_class_, experiment_name,
+                              regs_2coefs, coefs_2_instance, 10, 50,
+                              1e-3,
+                              1e-8, True,
+                              init_path]
+                experiments_list.append(experiment)
+        for func_name, regs_1coefs in filter_regularization_1coefs_losses_list:
+            for coefs_1_instance in coefs1:
+                experiment_name = (f"{name}__"
+                                   f"{'v1' if init_path else 'none'}__"
+                                   f"{func_name}__"
+                                   f"{'_'.join([str(x) for x in coefs_1_instance])}")
+                experiment = [dataset_class_, experiment_name,
+                              regs_1coefs, coefs_1_instance, 10, 50,
+                              1e-3,
+                              1e-8, True,
+                              init_path]
+                experiments_list.append(experiment)
+
+print(f"Formed: {len(experiments_list)} experiments!")
+
+# experiments_list = [
+#     # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-entr-10-5', filter_regularization_loss_from_entropy_inv, (1e-10,), 10, 50,
+#      1e-3,
+#      1e-8, True,
+#      Path("./data/fqwb_data/models/base_model.bin")],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-9-8', filter_regularization_loss_from_weights, (1e-9, 1e-8), 10, 50, 1e-3,
+#      1e-8,
+#      True, None],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-8-7', filter_regularization_loss_from_weights, (1e-8, 1e-7), 10, 50, 1e-3,
+#      1e-8,
+#      True, None],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-7-6', filter_regularization_loss_from_weights, (1e-7, 1e-6), 10, 50, 1e-3,
+#      1e-8,
+#      True, None],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-6-5', filter_regularization_loss_from_weights, (1e-6, 1e-5), 10, 50, 1e-3,
+#      1e-8,
+#      True, None],
+#     [Cifar10CSTMDatasetCreator, 'cifar10-5-4', filter_regularization_loss_from_weights, (1e-5, 1e-4), 10, 50, 1e-3,
+#      1e-8,
+#      True, None],
+# ]
+
 if __name__ == "__main__":
+    pprint(experiments_list)
     for (DatasetCreatorClass,
          experiment_name,
          prunning_func,
