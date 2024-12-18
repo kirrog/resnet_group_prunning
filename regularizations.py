@@ -27,41 +27,6 @@ def entropy_loss(param, coef):
     return entr
 
 
-# iterate by version of oi and calc mean - mat ojid
-# iterate through functions (like neurons/filters) and calc max value
-# iterate through oi * samples (batches/core elements/weights of neuron) and calc mean value
-
-@torch.jit.script
-def rademacher_weight_loss(param, coef):
-    n = 10
-    accum = 0
-    for i in range(n):
-        o = torch.randint(0, 1, param.size())
-        o[o == 0] = -1.0
-        l = []
-        for j in range(param.size()[0]):
-            d = param[j]
-            l.append(torch.sum(o * d) / d.numel())
-        accum += torch.max(torch.tensor(l))
-    return accum * coef / n
-
-
-# @torch.jit.script
-# def rademacher_inner_data_loss(param, coef):
-#     n = 10
-#     accum = 0
-#     for i in range(n):
-#
-#         o = torch.randint(0, 1, param.size())
-#         o[o == 0] = -1.0
-#         l = []
-#         for j in range(param.size()[1]):
-#             d = param[:, j]
-#             l.append(torch.sum(o * d) / d.numel())
-#         accum += torch.max(torch.tensor(l))
-#     return accum * coef / n
-
-
 def calc_mean_weights(model):
     return sum([float(torch.sum(x) / x.numel()) for x in model.parameters()])
 
@@ -90,36 +55,49 @@ def filter_regularization_loss_from_entropy(weights, bias, norm_coef, norm_bias,
 
 
 def filter_regularization_loss_from_entropy_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1 = coefficients[0]
-    res = torch.zeros((1)).to(device)
-    for i in range(weights.size()[0]):
-        res += entropy_loss(weights[i], wcl1)
-        res += entropy_loss(bias[i], wcl1)
-        res += entropy_loss(norm_coef[i], wcl1)
-        res += entropy_loss(norm_bias[i], wcl1)
-    return -torch.sum(res)
+    return -filter_regularization_loss_from_entropy(weights, bias, norm_coef, norm_bias, coefficients, device)
+
+
+# iterate by version of oi and calc mean - mat ojid
+# iterate through functions (like neurons/filters) and calc max value
+# iterate through oi * samples (batches/core elements/weights of neuron) and calc mean value
+
+@torch.jit.script
+def rademacher_weight_loss(param, coef, o):
+    res = o * param
+    if len(res.size()) > 2:
+        s = torch.sum(res, dim=list(range(len(res.size())))[2:]) / param[0].numel()
+    else:
+        s = res
+    if len(s.size()) > 1:
+        m = torch.max(s, dim=1)[0]
+    else:
+        m = s
+    return torch.mean(m) * coef
 
 
 def filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bias, coefficients, device):
     wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
+    n = 10
+    weights_o = torch.rand([n] + list(weights[0].size()), device=device)
+    weights_o[weights_o == 0] = -1.0
+    bias_o = torch.rand([n] + list(bias[0].size()), device=device)
+    bias_o[bias_o == 0] = -1.0
+    norm_coef_o = torch.rand([n] + list(norm_coef[0].size()), device=device)
+    norm_coef_o[norm_coef_o == 0] = -1.0
+    norm_bias_o = torch.rand([n] + list(norm_bias[0].size()), device=device)
+    norm_bias_o[norm_bias_o == 0] = -1.0
     for i in range(weights.size()[0]):
-        res += rademacher_weight_loss(weights[i], wcl1)
-        res += rademacher_weight_loss(bias[i], wcl1)
-        res += rademacher_weight_loss(norm_coef[i], wcl1)
-        res += rademacher_weight_loss(norm_bias[i], wcl1)
+        res += rademacher_weight_loss(weights[i], wcl1, weights_o)
+        res += rademacher_weight_loss(bias[i], wcl1, bias_o)
+        res += rademacher_weight_loss(norm_coef[i], wcl1, norm_coef_o)
+        res += rademacher_weight_loss(norm_bias[i], wcl1, norm_bias_o)
     return torch.sum(res)
 
 
 def filter_regularization_loss_from_rademacher_inv(weights, bias, norm_coef, norm_bias, coefficients, device):
-    wcl1 = coefficients[0]
-    res = torch.zeros((1)).to(device)
-    for i in range(weights.size()[0]):
-        res += rademacher_weight_loss(weights[i], wcl1)
-        res += rademacher_weight_loss(bias[i], wcl1)
-        res += rademacher_weight_loss(norm_coef[i], wcl1)
-        res += rademacher_weight_loss(norm_bias[i], wcl1)
-    return -torch.sum(res)
+    return - filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bias, coefficients, device)
 
 
 def block_regularization_loss_from_weights(weights, bias, norm_coef, norm_bias, coefficients, device):

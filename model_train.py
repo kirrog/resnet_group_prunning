@@ -196,31 +196,8 @@ for name, dataset_class_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-
+experiments_list = experiments_list[20:]
 print(f"Formed: {len(experiments_list)} experiments!")
-
-# experiments_list = [
-#     # [Cifar10CSTMDatasetCreator, 'cifar10', (1e-10, 1e-9), 10, 50, 1e-3, 1e-8, False, None],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-entr-10-5', filter_regularization_loss_from_entropy_inv, (1e-10,), 10, 50,
-#      1e-3,
-#      1e-8, True,
-#      Path("./data/fqwb_data/models/base_model.bin")],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-9-8', filter_regularization_loss_from_weights, (1e-9, 1e-8), 10, 50, 1e-3,
-#      1e-8,
-#      True, None],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-8-7', filter_regularization_loss_from_weights, (1e-8, 1e-7), 10, 50, 1e-3,
-#      1e-8,
-#      True, None],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-7-6', filter_regularization_loss_from_weights, (1e-7, 1e-6), 10, 50, 1e-3,
-#      1e-8,
-#      True, None],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-6-5', filter_regularization_loss_from_weights, (1e-6, 1e-5), 10, 50, 1e-3,
-#      1e-8,
-#      True, None],
-#     [Cifar10CSTMDatasetCreator, 'cifar10-5-4', filter_regularization_loss_from_weights, (1e-5, 1e-4), 10, 50, 1e-3,
-#      1e-8,
-#      True, None],
-# ]
 
 if __name__ == "__main__":
     pprint(experiments_list)
