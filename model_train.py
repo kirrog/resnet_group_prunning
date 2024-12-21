@@ -82,12 +82,16 @@ class ModelTrainer:
 
         valid_last_losses = []
         train_last_losses = []
-        for epoch in range(self.num_epochs):
+        pbar = tqdm(range(self.num_epochs), total=self.num_epochs, desc="training")
+        for epoch in pbar:
             loss_accum = 0.0
             loss_reg_accum = 0.0
             total = 0
             correct = 0
-            for i, (images, labels) in enumerate(tqdm(self.dataloader_train, desc="training", total=total_step)):
+
+            acc, valid_loss = 0.0, 0.0
+            for i, (images, labels) in enumerate(self.dataloader_train):
+
                 # Move tensors to the configured device
                 images = images.to(self.device)
                 labels = labels.to(self.device)
@@ -100,7 +104,8 @@ class ModelTrainer:
                 correct += (predicted == labels).sum().item()
 
                 loss = self.criterion(outputs, labels)
-                loss_accum += float(loss.item())
+                loss_item = float(loss.item())
+                loss_accum += loss_item
 
                 if prunner_obj:
                     prunner_obj.prune(loss)
@@ -112,6 +117,12 @@ class ModelTrainer:
                 self.optimizer.step()
                 del images, labels, outputs
                 clear_cache()
+                pbar.set_postfix_str(f"ep: {epoch:03d}/{self.num_epochs} "
+                                     f"i: {i:04d}/{len(self.dataloader_train)} "
+                                     f"ls: {loss_accum / total:0.5f}"
+                                     f"acc: {correct / total:0.5f}"
+                                     f"val_loss: {valid_loss:0.5f}"
+                                     f"val_acc: {acc:0.5f}")
 
             acc_train = correct / total
             acc, valid_loss = validate_model(self.model, self.dataloader_valid, self.device, self.criterion)
@@ -198,12 +209,14 @@ for name, dataset_class_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list
+experiments_list = experiments_list[20:]
+
+# experiments_list = [
+#     (Cifar10CSTMDatasetCreator, "cifar10_sigm", None, None, 10, 500, 1e-3, 0.0, False, None)
+# ]
+
 pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")
-# experiments_list = [
-#     (Cifar10CSTMDatasetCreator, "cifar10_long", None, None, 10, 500, 1e-3, 0.0, False, None)
-# ]
 
 if __name__ == "__main__":
 
