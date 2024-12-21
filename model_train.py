@@ -1,5 +1,4 @@
 import gc
-import json
 import os
 from pathlib import Path
 from pprint import pprint
@@ -165,9 +164,12 @@ coefs1 = [
 ]
 
 init_weights = [
-    None,
-    Path("/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin")  # V1
+    # None,
+    # Path("/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin")  # V1
+    Path("/media/kirrog/data/data/fqwb_data/models/2024_12_19__22_30___cifar10_long/ep_478_acc_0.871400.bin")  # V2
 ]
+
+init_version = "v2"
 
 experiments_list = []
 for name, dataset_class_ in dataset_list:
@@ -175,7 +177,7 @@ for name, dataset_class_ in dataset_list:
         for func_name, regs_2coefs in filter_regularization_2coefs_losses_list:
             for coefs_2_instance in coefs2:
                 experiment_name = (f"{name}__"
-                                   f"{'v1' if init_path else 'none'}__"
+                                   f"{init_version if init_path else 'none'}__"
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_2_instance])}")
                 experiment = [dataset_class_, experiment_name,
@@ -187,7 +189,7 @@ for name, dataset_class_ in dataset_list:
         for func_name, regs_1coefs in filter_regularization_1coefs_losses_list:
             for coefs_1_instance in coefs1:
                 experiment_name = (f"{name}__"
-                                   f"{'v1' if init_path else 'none'}__"
+                                   f"{init_version if init_path else 'none'}__"
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_1_instance])}")
                 experiment = [dataset_class_, experiment_name,
@@ -196,11 +198,15 @@ for name, dataset_class_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list[20:]
+experiments_list = experiments_list
+pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")
+# experiments_list = [
+#     (Cifar10CSTMDatasetCreator, "cifar10_long", None, None, 10, 500, 1e-3, 0.0, False, None)
+# ]
 
 if __name__ == "__main__":
-    pprint(experiments_list)
+
     for (DatasetCreatorClass,
          experiment_name,
          prunning_func,
@@ -224,7 +230,7 @@ if __name__ == "__main__":
         model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
         print(f"Loading model state from: {initialisation_path}")
         if initialisation_path and initialisation_path.exists():
-            model.load_state_dict(torch.load(initialisation_path, weights_only=True))
+            model.load_state_dict(torch.load(initialisation_path))
 
         # Loss and optimizer
         criterion = nn.CrossEntropyLoss()
@@ -251,7 +257,8 @@ if __name__ == "__main__":
             num_classes,
             num_epochs,
             device,
-            5
+            5,
+            10
         )
 
         model_trainer.train()
