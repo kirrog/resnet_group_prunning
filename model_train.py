@@ -15,7 +15,7 @@ from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.dirs_struct import DirsStruct
 from src.loggers import create_logger
 from src.model import ResNet, ResidualBlock
-from src.prunner import Prunner
+from src.regularizator import Regularizator
 from validation import validate_model
 
 cstm_logger = create_logger("train")
@@ -36,7 +36,7 @@ def cut_worst_epoches(experiment_path: Path, last_amount: int):
 
 class ModelTrainer:
     def __init__(self, model: nn.Module,
-                 prunner_obj: Optional[Prunner],
+                 reg_obj: Optional[Regularizator],
                  dataloaders_dict: Dict[str, torch.utils.data.DataLoader],
                  model_out_dir: Path,
                  criterion,
@@ -72,24 +72,22 @@ class ModelTrainer:
         self.model = model.to(self.device)
         self.loss_up_period = loss_up_period
         self.cut_worst_amount = cut_worst_amount
-        self.prunner_obj = prunner_obj
+        self.reg_obj = reg_obj
         cstm_logger.info("Trainer created")
 
     def train(self):
-
-        # Train the model
         total_step = len(self.dataloader_train)
 
         valid_last_losses = []
         train_last_losses = []
         pbar = tqdm(range(self.num_epochs), total=self.num_epochs, desc="training")
+        acc, valid_loss = 0.0, 0.0
         for epoch in pbar:
             loss_accum = 0.0
             loss_reg_accum = 0.0
             total = 0
             correct = 0
 
-            acc, valid_loss = 0.0, 0.0
             for i, (images, labels) in enumerate(self.dataloader_train):
 
                 # Move tensors to the configured device
@@ -107,8 +105,8 @@ class ModelTrainer:
                 loss_item = float(loss.item())
                 loss_accum += loss_item
 
-                if prunner_obj:
-                    prunner_obj.prune(loss)
+                if reg_obj:
+                    reg_obj.regularize(loss)
                 loss_reg_accum += float(loss.item())
                 # Backward and optimize
                 # May be zero grad can be deleted?
@@ -118,10 +116,10 @@ class ModelTrainer:
                 del images, labels, outputs
                 clear_cache()
                 pbar.set_postfix_str(f"ep: {epoch:03d}/{self.num_epochs} "
-                                     f"i: {i:04d}/{len(self.dataloader_train)} "
-                                     f"ls: {loss_accum / total:0.5f}"
-                                     f"acc: {correct / total:0.5f}"
-                                     f"val_loss: {valid_loss:0.5f}"
+                                     f"i: {i:04d}/{total_step} "
+                                     f"ls: {loss_accum / total:0.5f} "
+                                     f"acc: {correct / total:0.5f} "
+                                     f"val_loss: {valid_loss:0.5f} "
                                      f"val_acc: {acc:0.5f}")
 
             acc_train = correct / total
@@ -157,14 +155,14 @@ class ModelTrainer:
 dataset_list = [("cifar10", Cifar10CSTMDatasetCreator)]
 
 filter_regularization_2coefs_losses_list = [
-    ('weights', filter_regularization_loss_from_weights)
+    # ('weights', filter_regularization_loss_from_weights)
 ]
 
 filter_regularization_1coefs_losses_list = [
-    ('entropy', filter_regularization_loss_from_entropy),
-    ('entropy-inv', filter_regularization_loss_from_entropy_inv),
-    ('radem', filter_regularization_loss_from_rademacher),
-    ('radem-inv', filter_regularization_loss_from_rademacher_inv)
+    # ('entropy', filter_regularization_loss_from_entropy),
+    # ('entropy-inv', filter_regularization_loss_from_entropy_inv),
+    ('radem_v2', filter_regularization_loss_from_rademacher),
+    ('radem_v2-inv', filter_regularization_loss_from_rademacher_inv)
 ]
 
 coefs2 = [
@@ -174,21 +172,21 @@ coefs1 = [
     (1e-10,), (1e-9,), (1e-8,), (1e-7,), (1e-6,), (1e-5,), (1e-4,)
 ]
 
+models_path = Path("/media/kirrog/data/data/fqwb_data/models")
 init_weights = [
-    # None,
-    # Path("/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin")  # V1
-    Path("/media/kirrog/data/data/fqwb_data/models/2024_12_19__22_30___cifar10_long/ep_478_acc_0.871400.bin")  # V2
+    ('none', None),
+    ('v1', models_path / "2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin"),  # V1
+    ('v2', models_path / "2024_12_19__22_30___cifar10_long/ep_478_acc_0.871400.bin")  # V2
 ]
 
-init_version = "v2"
 
 experiments_list = []
 for name, dataset_class_ in dataset_list:
-    for init_path in init_weights:
+    for init_name, init_path in init_weights:
         for func_name, regs_2coefs in filter_regularization_2coefs_losses_list:
             for coefs_2_instance in coefs2:
                 experiment_name = (f"{name}__"
-                                   f"{init_version if init_path else 'none'}__"
+                                   f"{init_name}__"
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_2_instance])}")
                 experiment = [dataset_class_, experiment_name,
@@ -200,7 +198,7 @@ for name, dataset_class_ in dataset_list:
         for func_name, regs_1coefs in filter_regularization_1coefs_losses_list:
             for coefs_1_instance in coefs1:
                 experiment_name = (f"{name}__"
-                                   f"{init_version if init_path else 'none'}__"
+                                   f"{init_name}__"
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_1_instance])}")
                 experiment = [dataset_class_, experiment_name,
@@ -209,7 +207,7 @@ for name, dataset_class_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list[20:]
+experiments_list = experiments_list
 
 # experiments_list = [
 #     (Cifar10CSTMDatasetCreator, "cifar10_sigm", None, None, 10, 500, 1e-3, 0.0, False, None)
@@ -250,16 +248,16 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
         if use_group_loss:
-            prunner_obj = Prunner(model, pruning_coefficients, device, prunning_func)
+            reg_obj = Regularizator(model, pruning_coefficients, device, prunning_func)
         else:
-            prunner_obj = None
-        print(f"Using pruner: {prunner_obj}")
+            reg_obj = None
+        print(f"Using pruner: {reg_obj}")
 
         writer = SummaryWriter(str(stats_experiment_path), filename_suffix="tsbrd")
 
         model_trainer = ModelTrainer(
             model,
-            prunner_obj,
+            reg_obj,
             train_valid_dataloaders,
             model_experiment_path,
             criterion,

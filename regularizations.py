@@ -80,14 +80,19 @@ def filter_regularization_loss_from_rademacher(weights, bias, norm_coef, norm_bi
     wcl1 = coefficients[0]
     res = torch.zeros((1)).to(device)
     n = 10
+
     weights_o = torch.rand([n] + list(weights[0].size()), device=device)
-    weights_o[weights_o == 0] = -1.0
+    weights_o[weights_o >= 0.5] = 1.0
+    weights_o[weights_o <= 0.5] = -1.0
     bias_o = torch.rand([n] + list(bias[0].size()), device=device)
-    bias_o[bias_o == 0] = -1.0
+    bias_o[bias_o >= 0.5] = 1.0
+    bias_o[bias_o <= 0.5] = -1.0
     norm_coef_o = torch.rand([n] + list(norm_coef[0].size()), device=device)
-    norm_coef_o[norm_coef_o == 0] = -1.0
+    norm_coef_o[norm_coef_o >= 0.5] = 1.0
+    norm_coef_o[norm_coef_o <= 0.5] = -1.0
     norm_bias_o = torch.rand([n] + list(norm_bias[0].size()), device=device)
-    norm_bias_o[norm_bias_o == 0] = -1.0
+    norm_bias_o[norm_bias_o >= 0.5] = 1.0
+    norm_bias_o[norm_bias_o <= 0.5] = -1.0
     for i in range(weights.size()[0]):
         res += rademacher_weight_loss(weights[i], wcl1, weights_o)
         res += rademacher_weight_loss(bias[i], wcl1, bias_o)
