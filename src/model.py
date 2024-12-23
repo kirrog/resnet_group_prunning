@@ -631,10 +631,11 @@ class ResNet(nn.Module):
         size_value = 0
 
         features_of_inner_data = torch.zeros(input_conv_weight.size(0), device=device)
-        if seq.is_processing:
+        if type(seq.inner_data) is not list:
             features_of_inner_data = seq.get_features()
             features_of_inner_data -= torch.min(features_of_inner_data)
-            features_of_inner_data /= max(float(torch.max(features_of_inner_data)), 0.0000001)
+            max_feature_inner = float(torch.max(features_of_inner_data))
+            features_of_inner_data /= max_feature_inner if max_feature_inner != 0.0 else 0.1
         features_of_weights = torch.zeros(input_conv_weight.size(0), device=device)
         if weights_func is not None:
             features_of_weights = weights_func(input_conv_weight,
@@ -644,7 +645,8 @@ class ResNet(nn.Module):
                                                output_conv_weight,
                                                device)
             features_of_weights -= torch.min(features_of_weights)
-            features_of_weights /= max(float(torch.max(features_of_weights)), 0.0000001)
+            max_feature_weight = float(torch.max(features_of_weights))
+            features_of_weights /= max_feature_weight if max_feature_weight != 0.0 else 0.1
         for i in range(len(features_of_inner_data)):
             size_value = input_conv_weight[i].numel()
             val = float(features_of_inner_data[i]) + float(features_of_weights[i])

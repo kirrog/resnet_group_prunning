@@ -69,14 +69,13 @@ def search_by_prunning(criterion,
                        device,
                        init_step_sizes,
                        model_path_out: Path,
-                       model_path_in: Path = Path(
-                           "/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin")):
+                       model_path_in: Path):
     model = init_model(model_path_in)
-    prev_model = copy.deepcopy(model).cpu()
 
     init_acc, init_loss = validate_and_calc_features_model(model, inner_data_regularization_function, test_loader,
                                                            device,
                                                            criterion)
+    prev_model = copy.deepcopy(model).cpu()
 
     print(f"Inner: {inner_data_regularization_name}. "
           f"Weights: {weights_regularization_name}. "
@@ -131,10 +130,10 @@ def search_by_prunning(criterion,
                                                              device,
                                                              criterion)
                 prev_model = copy.deepcopy(model).cpu()
-            break
-    with open(model_path_out / f"init_{Path(model_path_in).name[:-4]}_"
-                               f"inner_reg_{inner_data_regularization_name}_"
-                               f"weights_reg_{weights_regularization_name}_"
+
+    with open(model_path_out / f"init_{Path(model_path_in).name[:-4]}__"
+                               f"inner_reg_{inner_data_regularization_name}__"
+                               f"weights_reg_{weights_regularization_name}__"
                                f"stats.json", "w", encoding="UTF-8") as f:
         json.dump(search_stats, f, ensure_ascii=False)
 
@@ -197,7 +196,7 @@ for (inner_regularization_function,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks:
+     epoch_path) in tasks[:2000]:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,
