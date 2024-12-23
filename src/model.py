@@ -8,30 +8,35 @@ import torch.nn as nn
 
 # @torch.jit.script
 def rademacher_complexity(inner_data):
-    n = 3
+    n = 10
     steps_count_float = inner_data.size(0) * inner_data.size(1) / (1024 * 64)
     steps_count_int = math.ceil(steps_count_float)
     step_size = inner_data.size(0) // max(int(steps_count_float), 1)
     accum_res = None
+    s_list = []
     for i in range(steps_count_int):
         inner_data_step_tensor = inner_data[i * step_size:min((i + 1) * step_size, inner_data.size(0))]
         if inner_data_step_tensor.size(0) == 0:
             break
-        sample = torch.rand([n] + list(inner_data_step_tensor.size())).cuda()
-        sample[sample >= 0.5] = 1
-        sample[sample <= 0.5] = -1
-        inner_data_n = torch.stack([inner_data_step_tensor] * n, dim=0)
-        res = sample * inner_data_n
-        s = torch.sum(res, dim=0) / n
-        if len(s.size()) > 1:
-            m = torch.amax(s, dim=list(range(len(s.size())))[2:])
-        else:
-            m = s
-        tensor_sum = torch.sum(m, dim=0)
-        if accum_res is not None:
-            accum_res += tensor_sum
-        else:
-            accum_res = tensor_sum
+        s = torch.zeros(inner_data_step_tensor.size(), device="cuda")
+        for j in range(n):
+            sample = torch.rand(list(inner_data_step_tensor.size()), device="cuda")
+            sample[sample >= 0.5] = 1
+            sample[sample <= 0.5] = -1
+            s += sample * inner_data_step_tensor
+        s /= n
+        s_list.append(s)
+
+    s_stuck = torch.cat(s_list, dim=0)
+    if len(s_stuck.size()) > 1:
+        m = torch.amax(s_stuck, dim=list(range(len(s_stuck.size())))[2:])
+    else:
+        m = s_stuck
+    tensor_sum = torch.sum(m, dim=0)
+    if accum_res is not None:
+        accum_res += tensor_sum
+    else:
+        accum_res = tensor_sum
     return accum_res / inner_data.size(0)
 
 
