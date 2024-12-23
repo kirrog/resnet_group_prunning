@@ -46,7 +46,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
     for step in range(num_of_layers):
         model.process_dataset_with_inner_data_extraction(test_loader)
         print("Features processed")
-        all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(step, 1)
+        all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_feature_delete(step, 1)
         print("First features deleted")
         model.eval()
         exp_metrics = calc_metrics(model, test_loader, device)
@@ -66,7 +66,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
         while low <= high:
             mid = (high + low) // 2
             model.process_dataset_with_inner_data_extraction(test_loader)
-            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_entropy_delete(step,
+            all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_feature_delete(step,
                                                                                                                 mid)
             print(f"Search mid: {mid} lowest feature num: {len(lowest_feature_value)} size: {size_value}")
             model.eval()
@@ -99,7 +99,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
             model.cuda()
             model.process_dataset_with_inner_data_extraction(test_loader)
             all_features, lowest_feature_value, size_value = (model.
-                                                              recreation_with_filter_lowest_entropy_delete(i, mid_num))
+                                                              recreation_with_filter_lowest_feature_delete(i, mid_num))
             results_cut.append((all_features, lowest_feature_value, size_value, mid_num, i))
     model.eval()
     exp_metrics = calc_metrics(model, test_loader, device)

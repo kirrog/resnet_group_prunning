@@ -5,10 +5,12 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from torchsummary import summary
 from tqdm import tqdm
 
-from src.dataset_loader import data_loader, Cifar10CSTMDatasetCreator
+from regularizations import filter_regularization_feature_from_weights, filter_regularization_feature_from_entropy, \
+    filter_regularization_feature_from_rademacher, filter_regularization_feature_from_entropy_inv, \
+    filter_regularization_feature_from_rademacher_inv
+from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity, inner_data_entropy, inner_data_weights, \
     inner_data_entropy_inv, rademacher_complexity_inv
 from validation import validate_model
@@ -24,28 +26,30 @@ def init_model(mode_path: Path):
 
 def validate_and_calc_features_model(model, reg_func, test_loader, device, criterion):
     gc.collect()
-    for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
-        for seq in l:
-            seq.is_processing = True
-            seq.proc_func = reg_func
-            del seq.inner_data
-            gc.collect()
-            seq.inner_data = []
+    if reg_func is not None:
+        for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
+            for seq in l:
+                seq.is_processing = True
+                seq.proc_func = reg_func
+                del seq.inner_data
+                gc.collect()
+                seq.inner_data = []
     acc, loss = validate_model(model, test_loader, device, criterion)
-    for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
-        for seq in l:
-            seq.is_processing = False
+    if reg_func is not None:
+        for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
+            for seq in l:
+                seq.is_processing = False
     return acc, loss
 
 
-def make_step(model, test_loader, device, criterion, layer_num, num2delete, reg_func):
+def make_step(model, test_loader, device, criterion, layer_num, num2delete, inner_data_reg_func, weights_reg_func):
     stats = dict()
 
-    all_features0, lowest_feature_value0, size_value0 = model.recreation_with_filter_lowest_delete(
+    all_features0, lowest_feature_value0, size_value0 = model.recreation_with_filter_lowest_feature_delete(
         layer_num,
-        num2delete)
+        num2delete, weights_reg_func, device)
 
-    acc, loss = validate_and_calc_features_model(model, reg_func, test_loader, device, criterion)
+    acc, loss = validate_and_calc_features_model(model, inner_data_reg_func, test_loader, device, criterion)
 
     stats["acc"] = acc
     stats["loss"] = float(loss.cpu())
@@ -58,8 +62,10 @@ def make_step(model, test_loader, device, criterion, layer_num, num2delete, reg_
 
 def search_by_prunning(criterion,
                        test_loader,
-                       regularization_function,
-                       regularization_name,
+                       inner_data_regularization_function,
+                       inner_data_regularization_name,
+                       weights_regularization_function,
+                       weights_regularization_name,
                        device,
                        init_step_sizes,
                        model_path_out: Path,
@@ -68,12 +74,14 @@ def search_by_prunning(criterion,
     model = init_model(model_path_in)
     prev_model = copy.deepcopy(model).cpu()
 
-    init_acc, init_loss = validate_and_calc_features_model(model, regularization_function, test_loader, device,
+    init_acc, init_loss = validate_and_calc_features_model(model, inner_data_regularization_function, test_loader,
+                                                           device,
                                                            criterion)
 
-    print(f"Init model. Test dataset: accuracy: {init_acc} loss: {init_loss}")
+    print(f"Inner: {inner_data_regularization_name}. "
+          f"Weights: {weights_regularization_name}. "
+          f"Init model. Test dataset: accuracy: {init_acc} loss: {init_loss}")
 
-    num2delete = 1
     current_step_sizes = init_step_sizes
     current_steps = [0, 0, 0, 0]
     search_stats = dict()
@@ -103,7 +111,7 @@ def search_by_prunning(criterion,
                                                 criterion,
                                                 layer_num,
                                                 current_step_sizes[layer_num],
-                                                regularization_function)
+                                                inner_data_regularization_function, weights_regularization_function)
                     search_stats[pos_str] = (step_acc, stats)
 
                 current_stats.append((layer_num, step_acc, -(current_acc - step_acc) / stats["size_value"]))
@@ -119,12 +127,14 @@ def search_by_prunning(criterion,
                 all_features0, lowest_feature_value0, size_value0 = model.recreation_with_filter_lowest_delete(
                     layer2delete,
                     current_step_sizes[layer2delete])
-                acc, loss = validate_and_calc_features_model(model, regularization_function, test_loader, device,
+                acc, loss = validate_and_calc_features_model(model, inner_data_regularization_function, test_loader,
+                                                             device,
                                                              criterion)
                 prev_model = copy.deepcopy(model).cpu()
-
+            break
     with open(model_path_out / f"init_{Path(model_path_in).name[:-4]}_"
-                               f"reg_{regularization_name}_"
+                               f"inner_reg_{inner_data_regularization_name}_"
+                               f"weights_reg_{weights_regularization_name}_"
                                f"stats.json", "w", encoding="UTF-8") as f:
         json.dump(search_stats, f, ensure_ascii=False)
 
@@ -134,14 +144,26 @@ def search_by_prunning(criterion,
 
 
 possible_drop = 0.0
-iner_regularization_functions = [
+
+inner_regularization_functions = [
+    ("none", None),
     ("weight", inner_data_weights),
     ("entr", inner_data_entropy),
     ("entr-inv", inner_data_entropy_inv),
     ("radem", rademacher_complexity),
     ("radem-inv", rademacher_complexity_inv)
 ]
-init_step_sizes = [1, 2, 4, 8]
+
+weights_regularization_functions = [
+    ("none", None),
+    ("weight", filter_regularization_feature_from_weights),
+    ("entr", filter_regularization_feature_from_entropy),
+    ("entr-inv", filter_regularization_feature_from_entropy_inv),
+    ("radem", filter_regularization_feature_from_rademacher),
+    ("radem-inv", filter_regularization_feature_from_rademacher_inv)
+]
+
+init_step_sizes = [1, 1, 8, 8]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 output_path = Path(f"/home/kirrog/projects/FQWB/model/v1_pos_drop_{possible_drop}")
 output_path.mkdir(parents=True, exist_ok=True)
@@ -162,15 +184,26 @@ for experiment_path in experiments_list:
         sorted([(x, float(str(x.name).split("_")[-1][:-4])) for x in epoches_paths], key=lambda x: x[1]))[
                          -points_per_experiment:]
     for epoch_path, acc in epoches_best_paths:
-        for regularization_name, regularization_function in iner_regularization_functions:
-            tasks.append((regularization_function, regularization_name, experiment_output_path, epoch_path))
+        for inner_regularization_name, inner_regularization_function in inner_regularization_functions:
+            for weights_regularization_name, weights_regularization_function in weights_regularization_functions:
+                if inner_regularization_name == "none" and weights_regularization_name == "none":
+                    continue
+                tasks.append((inner_regularization_function, inner_regularization_name, weights_regularization_function,
+                              weights_regularization_name, experiment_output_path, epoch_path))
 print(f"Tasks amount: {len(tasks)}")
 
-for regularization_function, regularization_name, experiment_output_path, epoch_path in tasks:
+for (inner_regularization_function,
+     inner_regularization_name,
+     weights_regularization_function,
+     weights_regularization_name,
+     experiment_output_path,
+     epoch_path) in tasks:
     search_by_prunning(criterion,
                        test_loader,
-                       regularization_function,
-                       regularization_name,
+                       inner_regularization_function,
+                       inner_regularization_name,
+                       weights_regularization_function,
+                       weights_regularization_name,
                        device,
                        init_step_sizes,
                        experiment_output_path,

@@ -40,9 +40,8 @@ def rademacher_complexity(inner_data):
     return accum_res / inner_data.size(0)
 
 
-# @torch.jit.script
 def rademacher_complexity_inv(inner_data):
-    return - rademacher_complexity(inner_data)
+    return rademacher_complexity(inner_data)
 
 
 # @torch.jit.script
@@ -63,9 +62,8 @@ def inner_data_entropy(inner_data, coef=0.0000001):
     return entr
 
 
-# @torch.jit.script
-def inner_data_entropy_inv(inner_data):
-    return -inner_data_entropy(inner_data)
+def inner_data_entropy_inv(inner_data, coef=0.0000001):
+    return -inner_data_entropy(inner_data, coef)
 
 
 # @torch.jit.script
@@ -77,7 +75,6 @@ def inner_data_weights(inner_data):
     return mean_res
 
 
-# @torch.jit.script
 def inner_data_weights_inv(inner_data):
     return -inner_data_weights(inner_data)
 
@@ -590,39 +587,39 @@ class ResNet(nn.Module):
             self.layer2 = self.recreation_with_filter_lowest_delete(2, num2delete)
             self.layer3 = self.recreation_with_filter_lowest_delete(3, num2delete)
 
-    def recreation_with_filter_lowest_entropy_delete(self, number: int, num2delete):
+    def recreation_with_filter_lowest_feature_delete(self, number: int, num2delete, weights_func, device):
         assert 3 >= number >= 0
         with torch.no_grad():
             lowest_feature_value = 0
             if number == 0:
                 layers = [self.layer0[0]]
                 res_block, all_features, lowest_feature_value, size_value = \
-                    self.recreate_layer_with_filter_entropy_delete_num(self.layer0[1], num2delete)
+                    self.recreate_layer_with_filter_feature_delete_num(self.layer0[1], num2delete, weights_func, device)
                 layers.append(res_block)
                 layers.append(self.layer0[2])
                 self.layer0 = nn.Sequential(*layers)
             elif number == 1:
                 layers = [self.layer0[0], self.layer0[1]]
                 res_block, all_features, lowest_feature_value, size_value = \
-                    self.recreate_layer_with_filter_entropy_delete_num(self.layer0[2], num2delete)
+                    self.recreate_layer_with_filter_feature_delete_num(self.layer0[2], num2delete, weights_func, device)
                 layers.append(res_block)
                 self.layer0 = nn.Sequential(*layers)
             elif number == 2:
                 layers = [self.layer3[0]]
                 res_block, all_features, lowest_feature_value, size_value = \
-                    self.recreate_layer_with_filter_entropy_delete_num(self.layer3[1], num2delete)
+                    self.recreate_layer_with_filter_feature_delete_num(self.layer3[1], num2delete, weights_func, device)
                 layers.append(res_block)
                 layers.append(self.layer3[2])
                 self.layer3 = nn.Sequential(*layers)
             elif number == 3:
                 layers = [self.layer3[0], self.layer3[1]]
                 res_block, all_features, lowest_feature_value, size_value = \
-                    self.recreate_layer_with_filter_entropy_delete_num(self.layer3[2], num2delete)
+                    self.recreate_layer_with_filter_feature_delete_num(self.layer3[2], num2delete, weights_func, device)
                 layers.append(res_block)
                 self.layer3 = nn.Sequential(*layers)
         return all_features, lowest_feature_value, size_value
 
-    def recreate_layer_with_filter_entropy_delete_num(self, seq, num2delete, invert=True):
+    def recreate_layer_with_filter_feature_delete_num(self, seq, num2delete, weights_func, device):
         input_conv_weight = seq.conv1[0].weight
         input_conv_bias = seq.conv1[0].bias
         input_norm_weight = seq.conv1[1].weight
@@ -633,13 +630,29 @@ class ResNet(nn.Module):
         all_features = []
         size_value = 0
 
-        features_of_inner_data = seq.get_features()
-        for i, inner_data_value in enumerate(features_of_inner_data):
-            size_value = self.calc_length(input_conv_weight[i])
-            all_features.append((i, float(inner_data_value)))
+        features_of_inner_data = torch.zeros(input_conv_weight.size(0), device=device)
+        if seq.is_processing:
+            features_of_inner_data = seq.get_features()
+            features_of_inner_data -= torch.min(features_of_inner_data)
+            features_of_inner_data /= max(float(torch.max(features_of_inner_data)), 0.0000001)
+        features_of_weights = torch.zeros(input_conv_weight.size(0), device=device)
+        if weights_func is not None:
+            features_of_weights = weights_func(input_conv_weight,
+                                               input_conv_bias,
+                                               input_norm_weight,
+                                               input_norm_bias,
+                                               output_conv_weight,
+                                               device)
+            features_of_weights -= torch.min(features_of_weights)
+            features_of_weights /= max(float(torch.max(features_of_weights)), 0.0000001)
+        for i in range(len(features_of_inner_data)):
+            size_value = input_conv_weight[i].numel()
+            val = float(features_of_inner_data[i]) + float(features_of_weights[i])
+            # assert val != 0.0
+            all_features.append((i, val))
 
         lowest_feature_value = list(map(lambda x: x[1],
-                                        sorted(all_features, key=lambda x: x[1], reverse=invert)))[:num2delete]
+                                        sorted(all_features, key=lambda x: x[1])))[:num2delete]
         saved_features = list(filter(lambda x: x[1] not in lowest_feature_value, all_features))
 
         in_size = input_conv_weight.size()
