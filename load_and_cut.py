@@ -6,19 +6,20 @@ from torchsummary import summary
 from tqdm import tqdm
 
 from src.dataset_loader import data_loader
-from src.model import ResidualBlock, ResNet
+from src.model import ResidualBlock, ResNet, rademacher_complexity
 
-threshold = 0.02
+threshold = 32.0
 experiment_num = 9
 find = True
-experiment_path = Path("/home/kirrog/projects/FQWB/model/4_block_cut")
+experiment_path = Path("/home/kirrog/projects/FQWB/model/v1")
 experiment_path.mkdir(parents=True, exist_ok=True)
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
-MODEL_PATH_IN = "/home/kirrog/projects/FQWB/model/aug_4_block_reg_group/l1_0.0001_l2_1e-05_wd_1e-08/result_acc_0.807900.bin"
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
+MODEL_PATH_IN = "/media/kirrog/data/data/fqwb_data/models/2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin"
 model = ResNet(ResidualBlock, [3, 1, 1, 3])
 model.load_state_dict(torch.load(MODEL_PATH_IN))
 model.eval()
+model = model.to("cuda")
 # model = model.cuda()
 summary(model, (3, 32, 32))
 # exit(0)
@@ -26,7 +27,7 @@ batch_size = 100
 test_loader = data_loader(data_dir='./data',
                           batch_size=batch_size,
                           test=True)
-model = model.cpu()
+model = model.to(device)
 with torch.no_grad():
     correct = 0
     total = 0
@@ -40,8 +41,8 @@ with torch.no_grad():
         del images, labels, outputs
     acc = correct / total
     print('Accuracy of the network on the {} test images: {} %'.format(10000, 100 * acc))
-model = model.cpu()
-model.recreation_with_filter_inner_data_regularization(threshold, test_loader)
+model = model.to(device)
+model.recreation_with_filter_inner_data_regularization_by_func(threshold, test_loader, rademacher_complexity)
 model.eval()
 # model = model.cuda()
 # summary(model, (3, 224, 224))

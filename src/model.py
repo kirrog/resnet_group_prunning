@@ -1,57 +1,80 @@
 import gc
+import math
 from functools import reduce
 
 import torch
 import torch.nn as nn
-from tqdm import tqdm
 
 
+# @torch.jit.script
 def rademacher_complexity(inner_data):
-    sample = torch.randint(0, 2, inner_data.size()).cuda()
-    sample[sample == 0] = -1
-    output = torch.mul(inner_data, sample)
-    return output.mean(dim=(1, 2))
-
-
-def rademacher_complexity_inv(inner_data):
-    sample = torch.randint(0, 2, inner_data.size()).cuda()
-    sample[sample == 0] = -1
-    output = torch.mul(inner_data, sample)
-    return output.mean(dim=(1, 2))
-
-
-def inner_data_entropy(inner_data):
-    lsm = nn.LogSoftmax()
-    log_probs = lsm(inner_data)
-    probs = torch.exp(log_probs)
-    p_log_p = log_probs * probs
-    entropy = -p_log_p.mean(dim=(1, 2))
-    return entropy
-
-
-def inner_data_entropy_inv(inner_data):
-    lsm = nn.LogSoftmax()
-    log_probs = lsm(inner_data)
-    probs = torch.exp(log_probs)
-    p_log_p = log_probs * probs
-    entropy = -p_log_p.mean(dim=(1, 2))
-    return entropy
-
-
-def inner_data_weights(inner_data):
-    res = torch.sum(torch.abs(inner_data))
-    res += torch.sum(inner_data ** 2)
-    return res
-
-
-def inner_data_processing(inner_data, processing_function):
-    output = []
-    for element in range(inner_data.size()[0]):
-        if type(output) is list:
-            output = processing_function(inner_data[element])
+    n = 3
+    steps_count_float = inner_data.size(0) * inner_data.size(1) / (1024 * 64)
+    steps_count_int = math.ceil(steps_count_float)
+    step_size = inner_data.size(0) // max(int(steps_count_float), 1)
+    accum_res = None
+    for i in range(steps_count_int):
+        inner_data_step_tensor = inner_data[i * step_size:min((i + 1) * step_size, inner_data.size(0))]
+        if inner_data_step_tensor.size(0) == 0:
+            break
+        sample = torch.rand([n] + list(inner_data_step_tensor.size())).cuda()
+        sample[sample >= 0.5] = 1
+        sample[sample <= 0.5] = -1
+        inner_data_n = torch.stack([inner_data_step_tensor] * n, dim=0)
+        res = sample * inner_data_n
+        s = torch.sum(res, dim=0) / n
+        if len(s.size()) > 1:
+            m = torch.amax(s, dim=list(range(len(s.size())))[2:])
         else:
-            output += processing_function(inner_data[element])
-    return output
+            m = s
+        tensor_sum = torch.sum(m, dim=0)
+        if accum_res is not None:
+            accum_res += tensor_sum
+        else:
+            accum_res = tensor_sum
+    return accum_res / inner_data.size(0)
+
+
+# @torch.jit.script
+def rademacher_complexity_inv(inner_data):
+    return - rademacher_complexity(inner_data)
+
+
+# @torch.jit.script
+def inner_data_entropy(inner_data, coef=0.0000001):
+    # lsm = nn.LogSoftmax()
+    # log_probs = lsm(inner_data)
+    # probs = torch.exp(log_probs)
+    # p_log_p = log_probs * probs
+    # entropy = -p_log_p.mean(dim=(1, 2))
+    # return entropy
+
+    d = torch.abs(inner_data)
+    # d[d == 0.0] = coef
+    d += coef
+    sum_dims_list = list(range(len(inner_data.size())))
+    sum_dims_list.pop(1)
+    entr = torch.sum(torch.abs(- d * torch.log(d) * coef), dim=sum_dims_list) / d[:, 0].numel()
+    return entr
+
+
+# @torch.jit.script
+def inner_data_entropy_inv(inner_data):
+    return -inner_data_entropy(inner_data)
+
+
+# @torch.jit.script
+def inner_data_weights(inner_data):
+    dims2sum = list(range(len(inner_data.size())))[2:]
+    res = torch.sum(torch.abs(inner_data), dim=dims2sum)
+    res += torch.sum(inner_data ** 2, dim=dims2sum)
+    mean_res = torch.mean(res, dim=0)
+    return mean_res
+
+
+# @torch.jit.script
+def inner_data_weights_inv(inner_data):
+    return -inner_data_weights(inner_data)
 
 
 class ResidualBlock(nn.Module):
@@ -72,6 +95,7 @@ class ResidualBlock(nn.Module):
         self.inner_data = []
         self.process_data_number = 0
         self.is_processing = is_processing
+        self.proc_func = inner_data_weights
         self.features_calced = 0.0
 
     def forward(self, x):
@@ -79,8 +103,8 @@ class ResidualBlock(nn.Module):
         out = self.conv1(x)
         if self.is_processing:
             self.process_data_number += out.size()[0]
-            # feature = inner_data_processing(out, rademacher_complexity)
-            feature = inner_data_processing(out, inner_data_entropy)
+            # feature = inner_data_processing(out, self.proc_func)
+            feature = self.proc_func(out)
             if type(self.inner_data) is list:
                 self.inner_data = feature
             else:
@@ -526,12 +550,13 @@ class ResNet(nn.Module):
         self.recreation_features.append(layers_features)
         return nn.Sequential(*layers)
 
-    def process_dataset_with_inner_data_extraction(self, dataset):
+    def process_dataset_with_inner_data_extraction(self, dataset, reg_func=inner_data_weights):
         with torch.no_grad():
             gc.collect()
             for l in [self.layer0, self.layer1, self.layer2, self.layer3]:
                 for seq in l:
                     seq.is_processing = True
+                    seq.proc_func = reg_func
                     del seq.inner_data
                     gc.collect()
                     seq.inner_data = []
@@ -545,13 +570,20 @@ class ResNet(nn.Module):
                     seq.is_processing = False
 
     def recreation_with_filter_inner_data_regularization(self, threshold: float, dataset):
-        assert 1.0 >= threshold >= 0.0
         with torch.no_grad():
             self.process_dataset_with_inner_data_extraction(dataset)
             self.layer0 = self.recreate_layer_with_filter_inner_data_threshold(self.layer0, threshold)
             self.layer1 = self.recreate_layer_with_filter_inner_data_threshold(self.layer1, threshold)
             self.layer2 = self.recreate_layer_with_filter_inner_data_threshold(self.layer2, threshold)
             self.layer3 = self.recreate_layer_with_filter_inner_data_threshold(self.layer3, threshold)
+
+    def recreation_with_filter_inner_data_regularization_by_func(self, num2delete: float, dataset, reg_func):
+        with torch.no_grad():
+            self.process_dataset_with_inner_data_extraction(dataset, reg_func)
+            self.layer0 = self.recreation_with_filter_lowest_delete(0, num2delete)
+            self.layer1 = self.recreation_with_filter_lowest_delete(1, num2delete)
+            self.layer2 = self.recreation_with_filter_lowest_delete(2, num2delete)
+            self.layer3 = self.recreation_with_filter_lowest_delete(3, num2delete)
 
     def recreation_with_filter_lowest_entropy_delete(self, number: int, num2delete):
         assert 3 >= number >= 0

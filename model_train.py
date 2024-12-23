@@ -217,7 +217,7 @@ pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")
 
 if __name__ == "__main__":
-
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for (DatasetCreatorClass,
          experiment_name,
          prunning_func,
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         dirs_struct_entity = DirsStruct()
         model_experiment_path, stats_experiment_path = dirs_struct_entity.get_stats__and_model_save_path(
             experiment_name)
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Working on ")
 
         batch_size = 456
         cifar10_dataset_creator = DatasetCreatorClass()

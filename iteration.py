@@ -123,35 +123,6 @@ def iterate_through_hyperparams(output_path: Path, batch_size=4096):
             iterate_through_experiment(exp, output, test_loader)
 
 
-def move_hyperparams(output_path: Path):
-    models = dict()
-    for hyps in (output_path / "aug_4_block").glob("*"):
-        l = [x.name[:-4] for x in list(hyps.glob("*"))]
-        print(f"Name: {hyps.name} len: {len(l)}")
-        if len(l) == 99:
-            ll = []
-            for exp in [x[:6] for x in l]:
-                if exp in ll:
-                    ll.remove(exp)
-                else:
-                    ll.append(exp)
-            print(ll)
-        models[hyps.name] = set(l)
-    for hyper_param in hyperparams_list[1:]:
-        for exp in hyper_param.glob("*"):
-            output = output_path / hyper_param.name / exp.name
-            output.mkdir(parents=True, exist_ok=True)
-            models_paths = [x.name[:-4] for x in list(exp.glob("ep*"))]
-            s = set(models_paths).intersection(models[exp.name])
-            print(f"Hyp: {hyper_param.name}, models: {len(models_paths)} found: {len(s)}")
-            for model_path in s:
-                stats_output = output / (model_path + ".pkl")
-                stats_input = output_path / "aug_4_block" / exp.name / (model_path + ".pkl")
-                with open(str(stats_input), "rb") as f_in:
-                    with open(str(stats_output), "wb") as f_out:
-                        pickle.dump(pickle.load(f_in), f_out)
-
-
 def experiment_on_model_with_lowest_filter(model_path: Path, test_loader, num_of_layers=4):
     model = get_new_model_instance()
     orig_state = torch.load(str(model_path))
