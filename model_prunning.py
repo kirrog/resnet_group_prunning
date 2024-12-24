@@ -95,6 +95,7 @@ def search_by_prunning(criterion,
             for layer_num in range(4):
                 if current_steps[layer_num] + current_step_sizes[layer_num] == max_steps[layer_num]:
                     current_stats.append((layer_num, 0.0, -(current_acc - 0.0) / stats["size_value"]))
+                    continue
                 model = copy.deepcopy(prev_model).cuda()
                 current_steps_changes = current_steps.copy()
                 current_steps_changes[layer_num] += current_step_sizes[layer_num]
