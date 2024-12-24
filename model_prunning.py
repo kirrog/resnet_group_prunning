@@ -170,7 +170,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 output_path = Path(f"./model/v1_pos_drop_{possible_drop}")
 output_path.mkdir(parents=True, exist_ok=True)
 cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
-test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+test_loader = list(cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"])
 criterion = nn.CrossEntropyLoss()
 points_per_experiment = 3
 
