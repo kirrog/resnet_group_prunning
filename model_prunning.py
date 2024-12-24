@@ -164,14 +164,14 @@ weights_regularization_functions = [
 
 init_step_sizes = [1, 1, 8, 8]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-output_path = Path(f"/home/kirrog/projects/FQWB/model/v1_pos_drop_{possible_drop}")
+output_path = Path(f"./model/v1_pos_drop_{possible_drop}")
 output_path.mkdir(parents=True, exist_ok=True)
 cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
 test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 criterion = nn.CrossEntropyLoss()
 points_per_experiment = 3
 
-experiments_root_dir = Path("/media/kirrog/data/data/fqwb_data/models")
+experiments_root_dir = Path("./data/fqwb_data/models/models2send")
 experiments_list = list(experiments_root_dir.glob("*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
@@ -187,8 +187,14 @@ for experiment_path in experiments_list:
             for weights_regularization_name, weights_regularization_function in weights_regularization_functions:
                 if inner_regularization_name == "none" and weights_regularization_name == "none":
                     continue
-                tasks.append((inner_regularization_function, inner_regularization_name, weights_regularization_function,
-                              weights_regularization_name, experiment_output_path, epoch_path))
+                json_path_out = experiment_output_path / (f"init_{Path(epoch_path).name[:-4]}__"
+                                                          f"inner_reg_{inner_regularization_name}__"
+                                                          f"weights_reg_{weights_regularization_name}__"
+                                                          f"stats.json")
+                if not json_path_out.exists():
+                    tasks.append(
+                        (inner_regularization_function, inner_regularization_name, weights_regularization_function,
+                         weights_regularization_name, experiment_output_path, epoch_path))
 print(f"Tasks amount: {len(tasks)}")
 
 for (inner_regularization_function,
@@ -196,7 +202,7 @@ for (inner_regularization_function,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks[:2000]:
+     epoch_path) in tasks:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,
