@@ -83,6 +83,7 @@ def search_by_prunning(criterion,
 
     current_step_sizes = init_step_sizes
     current_steps = [0, 0, 0, 0]
+    max_steps = [64,64,512,512]
     search_stats = dict()
     current_acc = init_acc
     step_acc = current_acc
@@ -92,6 +93,8 @@ def search_by_prunning(criterion,
             current_stats = []
 
             for layer_num in range(4):
+                if current_steps_changes[layer_num] + current_step_sizes[layer_num] == max_steps[layer_num]:
+                    current_stats.append((layer_num, 0.0, -(current_acc - 0.0) / stats["size_value"]))
                 model = copy.deepcopy(prev_model).cuda()
                 current_steps_changes = current_steps.copy()
                 current_steps_changes[layer_num] += current_step_sizes[layer_num]
