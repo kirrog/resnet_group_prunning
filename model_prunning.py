@@ -83,11 +83,12 @@ def search_by_prunning(criterion,
 
     current_step_sizes = init_step_sizes
     current_steps = [0, 0, 0, 0]
-    max_steps = [64,64,512,512]
+    max_steps = [64, 64, 512, 512]
     search_stats = dict()
     current_acc = init_acc
     step_acc = current_acc
     pbar = tqdm(range(256), total=256, desc="Search for best configuration")
+    save_res = True
     with torch.no_grad():
         for i in pbar:
             current_stats = []
@@ -134,12 +135,16 @@ def search_by_prunning(criterion,
                                                              device,
                                                              criterion)
                 prev_model = copy.deepcopy(model).cpu()
+                # if i > 3:
+                #     save_res=False
+                #     break
 
-    with open(model_path_out / f"init_{Path(model_path_in).name[:-4]}__"
-                               f"inner_reg_{inner_data_regularization_name}__"
-                               f"weights_reg_{weights_regularization_name}__"
-                               f"stats.json", "w", encoding="UTF-8") as f:
-        json.dump(search_stats, f, ensure_ascii=False)
+    if save_res:
+        with open(model_path_out / f"init_{Path(model_path_in).name[:-4]}__"
+                                   f"inner_reg_{inner_data_regularization_name}__"
+                                   f"weights_reg_{weights_regularization_name}__"
+                                   f"stats.json", "w", encoding="UTF-8") as f:
+            json.dump(search_stats, f, ensure_ascii=False)
 
     del prev_model
     torch.cuda.empty_cache()
@@ -173,9 +178,9 @@ output_path.mkdir(parents=True, exist_ok=True)
 cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
 test_loader = list(cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"])
 criterion = nn.CrossEntropyLoss()
-points_per_experiment = 3
+points_per_experiment = 1
 
-experiments_root_dir = Path("./data/fqwb_data/models/models2send")
+experiments_root_dir = Path("/media/kirrog/data/data/fqwb_data/models")
 experiments_list = list(experiments_root_dir.glob("*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
@@ -183,13 +188,19 @@ for experiment_path in experiments_list:
     experiment_output_path = output_path / str(experiment_path.name)
     experiment_output_path.mkdir(parents=True, exist_ok=True)
     epoches_paths = list(experiment_path.glob('*.bin'))
+    exp_features = str(experiment_path.name).split("__")
+    reg_name = "none"
+    if len(exp_features) > 3:
+        reg_name = exp_features[4]
     epoches_best_paths = list(
         sorted([(x, float(str(x.name).split("_")[-1][:-4])) for x in epoches_paths], key=lambda x: x[1]))[
-                         -points_per_experiment:]
+                         -(points_per_experiment + 2):-2]
     for epoch_path, acc in epoches_best_paths:
         for inner_regularization_name, inner_regularization_function in inner_regularization_functions:
             for weights_regularization_name, weights_regularization_function in weights_regularization_functions:
                 if inner_regularization_name == "none" and weights_regularization_name == "none":
+                    continue
+                if weights_regularization_name != reg_name:
                     continue
                 json_path_out = experiment_output_path / (f"init_{Path(epoch_path).name[:-4]}__"
                                                           f"inner_reg_{inner_regularization_name}__"
