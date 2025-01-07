@@ -178,12 +178,14 @@ output_path.mkdir(parents=True, exist_ok=True)
 cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
 test_loader = list(cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"])
 criterion = nn.CrossEntropyLoss()
-points_per_experiment = 1
+points_per_experiment = 3
 
 experiments_root_dir = Path("/media/kirrog/data/data/fqwb_data/models")
 experiments_list = list(experiments_root_dir.glob("*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
+possible_tasks = []
+num_epoch_list = []
 for experiment_path in experiments_list:
     experiment_output_path = output_path / str(experiment_path.name)
     experiment_output_path.mkdir(parents=True, exist_ok=True)
@@ -192,32 +194,46 @@ for experiment_path in experiments_list:
     reg_name = "none"
     if len(exp_features) > 3:
         reg_name = exp_features[4]
+        if reg_name == "radem_v2-inv":
+            reg_name = "radem-inv"
+        if reg_name == "radem_v2":
+            reg_name = "radem"
+        if reg_name == "entropy":
+            reg_name = "entr"
+        if reg_name == "entropy-inv":
+            reg_name = "entr-inv"
+        if reg_name == "weights":
+            reg_name = "weight"
     epoches_best_paths = list(
         sorted([(x, float(str(x.name).split("_")[-1][:-4])) for x in epoches_paths], key=lambda x: x[1]))[
-                         -(points_per_experiment + 2):-2]
+                         -points_per_experiment:]
+    num_epoch_list.append(len(epoches_best_paths))
     for epoch_path, acc in epoches_best_paths:
         for inner_regularization_name, inner_regularization_function in inner_regularization_functions:
             for weights_regularization_name, weights_regularization_function in weights_regularization_functions:
-                if inner_regularization_name == "none" and weights_regularization_name == "none":
-                    continue
-                if weights_regularization_name != reg_name:
-                    continue
                 json_path_out = experiment_output_path / (f"init_{Path(epoch_path).name[:-4]}__"
                                                           f"inner_reg_{inner_regularization_name}__"
                                                           f"weights_reg_{weights_regularization_name}__"
                                                           f"stats.json")
+                possible_tasks.append(json_path_out)
+                if inner_regularization_name == "none" and weights_regularization_name == "none":
+                    continue
+                if weights_regularization_name != reg_name:
+                    continue
                 if not json_path_out.exists():
                     tasks.append(
                         (inner_regularization_function, inner_regularization_name, weights_regularization_function,
                          weights_regularization_name, experiment_output_path, epoch_path))
 print(f"Tasks amount: {len(tasks)}")
+print(f"Possible tasks amount: {len(possible_tasks)}")
+print(f"Epoches amount: {sum(num_epoch_list)}")
 
 for (inner_regularization_function,
      inner_regularization_name,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks:
+     epoch_path) in tasks[700:]:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,
