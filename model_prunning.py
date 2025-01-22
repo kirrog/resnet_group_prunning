@@ -180,7 +180,7 @@ test_loader = list(cifar10_dataset_creator.create_loaders(create_test_dataloader
 criterion = nn.CrossEntropyLoss()
 points_per_experiment = 3
 
-experiments_root_dir = Path("/media/kirrog/data/data/fqwb_data/models")
+experiments_root_dir = Path("/media/kirrog/Expansion/models")
 experiments_list = list(experiments_root_dir.glob("*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
@@ -233,7 +233,7 @@ for (inner_regularization_function,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks[700:]:
+     epoch_path) in tasks[600:]:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,

@@ -14,7 +14,7 @@ logger = create_logger(__name__)
 # logger.setLevel(logging.DEBUG)
 
 class Cifar10CSTMDatasetCreator:
-    def __init__(self, data_dir: Path = Path("/media/kirrog/data/data/fqwb_data/data/cifar_10"),
+    def __init__(self, data_dir: Path = Path("/home/kirrog/projects/FQWB/data"),
                  batch_size: int = 1024,
                  random_seed: int = 42,
                  valid_size: float = 0.1,
