@@ -6,7 +6,7 @@ import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, \
     confusion_matrix
 
-from src.dataset_loader import data_loader
+from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResNet, ResidualBlock
 
 
@@ -46,8 +46,7 @@ if __name__ == "__main__":
     model = model.cuda()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     batch_size = 100
-    test_loader = data_loader(data_dir='./data',
-                              batch_size=batch_size,
-                              test=True)
+    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
+    test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
     metrics = calc_metrics(model, test_loader, device)
     pprint(metrics)

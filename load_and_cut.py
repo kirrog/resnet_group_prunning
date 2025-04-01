@@ -5,7 +5,7 @@ import torch
 from torchsummary import summary
 from tqdm import tqdm
 
-from src.dataset_loader import data_loader
+from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity
 
 threshold = 32.0
@@ -24,9 +24,8 @@ model = model.to("cuda")
 summary(model, (3, 32, 32))
 # exit(0)
 batch_size = 100
-test_loader = data_loader(data_dir='./data',
-                          batch_size=batch_size,
-                          test=True)
+cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
+test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 model = model.to(device)
 with torch.no_grad():
     correct = 0

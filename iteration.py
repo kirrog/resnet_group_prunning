@@ -5,8 +5,8 @@ import torch
 from torchsummary import summary
 from tqdm import tqdm
 
-from src.dataset_loader import data_loader
 from metrics import calc_metrics
+from src.dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResNet, ResidualBlock
 
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
@@ -112,9 +112,8 @@ def iterate_through_experiment(directory_models: Path, directory_stats: Path, te
 
 
 def iterate_through_hyperparams(output_path: Path, batch_size=4096):
-    test_loader = data_loader(data_dir='./data',
-                              batch_size=batch_size,
-                              test=True)
+    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
+    test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
     for hyper_param in hyperparams_list:
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
@@ -209,9 +208,8 @@ def iterate_through_experiment_lowest_delete(directory_models: Path, directory_s
 
 
 def iterate_through_hyperparams_lowest_delete(output_path: Path, batch_size=4096):
-    test_loader = data_loader(data_dir='./data',
-                              batch_size=batch_size,
-                              test=True)
+    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
+    test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
     for hyper_param in hyperparams_list:
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
@@ -254,9 +252,8 @@ def iterate_through_experiment_lowest_block(directory_models: Path, directory_st
 
 
 def iterate_through_hyperparams_lowest_block(output_path: Path, batch_size=4096):
-    test_loader = data_loader(data_dir='./data',
-                              batch_size=batch_size,
-                              test=True)
+    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
+    test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
     for hyper_param in hyperparams_list:
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
