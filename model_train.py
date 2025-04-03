@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from regularizations import *
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.batterfly_dataset_loader import BatterflyCSTMDatasetCreator
 from src.dirs_struct import DirsStruct
 from src.loggers import create_logger
 from src.model import ResNet, ResidualBlock
@@ -141,7 +141,7 @@ class ModelTrainer:
 
             cut_worst_epoches(self.model_out_dir, self.cut_worst_amount)
 
-            if epoch > 0 and min(train_last_losses[-self.loss_up_period - 1:-1]) >= train_last_losses[-1] and max(
+            if epoch > self.loss_up_period and min(train_last_losses[-self.loss_up_period - 1:-1]) >= train_last_losses[-1] and max(
                     valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
                 print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
                 break
@@ -152,36 +152,64 @@ class ModelTrainer:
         clear_cache()
 
 
-dataset_list = [("cifar10", Cifar10CSTMDatasetCreator)]
+dataset_list = [
+    # ("cifar10", Cifar10CSTMDatasetCreator, 10)
+    # ("cifar100", Cifar100CSTMDatasetCreator, 100)
+    ("butterfly", BatterflyCSTMDatasetCreator, 75)
+]
 
 filter_regularization_2coefs_losses_list = [
-    # ('weights', filter_regularization_loss_from_weights)
+    ('weights', filter_regularization_loss_from_weights)
 ]
 
 filter_regularization_1coefs_losses_list = [
-    # ('entropy', filter_regularization_loss_from_entropy),
-    # ('entropy-inv', filter_regularization_loss_from_entropy_inv),
+    ('entropy', filter_regularization_loss_from_entropy),
+    ('entropy-inv', filter_regularization_loss_from_entropy_inv),
     ('radem_v2', filter_regularization_loss_from_rademacher),
     ('radem_v2-inv', filter_regularization_loss_from_rademacher_inv)
 ]
 
 coefs2 = [
-    (1e-10, 1e-9), (1e-9, 1e-8), (1e-8, 1e-7), (1e-7, 1e-6), (1e-6, 1e-5), (1e-5, 1e-4)
+    (1e-9, 1e-8),
+    (1e-8, 1e-7),
+    (1e-7, 1e-6),
+    (1e-6, 1e-5),
+    (1e-5, 1e-4)
 ]
 coefs1 = [
-    (1e-10,), (1e-9,), (1e-8,), (1e-7,), (1e-6,), (1e-5,), (1e-4,)
+    (1e-9,),
+    (1e-8,),
+    (1e-7,),
+    (1e-6,),
+    (1e-5,),
+    (1e-4,)
 ]
 
-models_path = Path("/media/kirrog/data/data/fqwb_data/models")
+# models_path = Path("/media/kirrog/data/data/fqwb_data/models")
+models_path = Path("/media/kirrog/Expansion/models")
 init_weights = [
     ('none', None),
-    ('v1', models_path / "2024_12_07__13_34___cifar10/ep_047_acc_0.846400.bin"),  # V1
-    ('v2', models_path / "2024_12_19__22_30___cifar10_long/ep_478_acc_0.871400.bin")  # V2
+    # ('v1', models_path / "2025_04_02__16_14___cifar100__none__none__/ep_025_acc_0.544400.bin"),  # V1
+    ('v1', models_path / "2025_04_03__13_31___butterfly__none__none__/ep_043_acc_0.611021.bin"),  # V1
+    # ('v2', models_path / "2025_04_02__16_35___cifar100_long__none__none__/ep_058_acc_0.580000.bin")  # V2
+    ('v2', models_path / "2025_04_03__14_08___butterfly_long__none__none__/ep_479_acc_0.742301.bin")  # V2
 ]
 
-
 experiments_list = []
-for name, dataset_class_ in dataset_list:
+epoches_num = 50
+loss_up_period = 5
+cut_worst_amount = 10
+for name, dataset_class_, num_classes_ in dataset_list:
+    # experiment_name = (f"{name}__"
+    # experiment_name = (f"{name}_long__"
+    #                    f"none__"
+    #                    f"none__")
+    # experiment = [dataset_class_, experiment_name,
+    #               None, None, num_classes_, epoches_num,
+    #               1e-3,
+    #               1e-8, False,
+    #               None]
+    # experiments_list.append(experiment)
     for init_name, init_path in init_weights:
         for func_name, regs_2coefs in filter_regularization_2coefs_losses_list:
             for coefs_2_instance in coefs2:
@@ -190,7 +218,7 @@ for name, dataset_class_ in dataset_list:
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_2_instance])}")
                 experiment = [dataset_class_, experiment_name,
-                              regs_2coefs, coefs_2_instance, 10, 50,
+                              regs_2coefs, coefs_2_instance, num_classes_, epoches_num,
                               1e-3,
                               1e-8, True,
                               init_path]
@@ -202,16 +230,13 @@ for name, dataset_class_ in dataset_list:
                                    f"{func_name}__"
                                    f"{'_'.join([str(x) for x in coefs_1_instance])}")
                 experiment = [dataset_class_, experiment_name,
-                              regs_1coefs, coefs_1_instance, 10, 50,
+                              regs_1coefs, coefs_1_instance, num_classes_, epoches_num,
                               1e-3,
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list
+experiments_list = experiments_list[4:] # [25:]
 
-# experiments_list = [
-#     (Cifar10CSTMDatasetCreator, "cifar10_sigm", None, None, 10, 500, 1e-3, 0.0, False, None)
-# ]
 
 pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")
@@ -233,12 +258,13 @@ if __name__ == "__main__":
             experiment_name)
         print(f"Working on ")
 
+        # batch_size = 456
         batch_size = 456
         cifar10_dataset_creator = DatasetCreatorClass()
         train_valid_dataloaders = cifar10_dataset_creator.create_loaders()
         train_valid_dataloaders["test"] = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 
-        model = ResNet(ResidualBlock, [3, 1, 1, 3]).to(device)
+        model = ResNet(ResidualBlock, [3, 1, 1, 3], num_classes=num_classes).to(device)
         print(f"Loading model state from: {initialisation_path}")
         if initialisation_path and initialisation_path.exists():
             model.load_state_dict(torch.load(initialisation_path))
@@ -268,8 +294,8 @@ if __name__ == "__main__":
             num_classes,
             num_epochs,
             device,
-            5,
-            10
+            loss_up_period,
+            cut_worst_amount
         )
 
         model_trainer.train()

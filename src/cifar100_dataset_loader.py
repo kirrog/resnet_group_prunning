@@ -13,7 +13,7 @@ logger = create_logger(__name__)
 
 # logger.setLevel(logging.DEBUG)
 
-class Cifar10CSTMDatasetCreator:
+class Cifar100CSTMDatasetCreator:
     def __init__(self, data_dir: Path = Path("/home/kirrog/projects/FQWB/data"),
                  batch_size: int = 1024,
                  random_seed: int = 42,
@@ -35,7 +35,7 @@ class Cifar10CSTMDatasetCreator:
         self.shuffle = shuffle
         self.num_of_workers = num_of_workers
         self.image_size = image_size
-        logger.info("Cifar10DataCreator init")
+        logger.info("Cifar100DataCreator init")
 
     def create_loaders(self, create_test_dataloader: bool = False) -> Dict[str, torch.utils.data.DataLoader]:
         logger.info(f"Create dataloader: is_test:{create_test_dataloader}")
@@ -58,7 +58,7 @@ class Cifar10CSTMDatasetCreator:
         ])
 
         if create_test_dataloader:
-            dataset = datasets.CIFAR10(
+            dataset = datasets.CIFAR100(
                 root=self.data_dir, train=False,
                 download=True, transform=transform,
             )
@@ -73,14 +73,14 @@ class Cifar10CSTMDatasetCreator:
             return {"test": data_loader}
 
         # load the dataset
-        train_dataset = datasets.CIFAR10(
+        train_dataset = datasets.CIFAR100(
             root=self.data_dir,
             train=True,
             download=True,
             transform=train_transform,
         )
 
-        valid_dataset = datasets.CIFAR10(
+        valid_dataset = datasets.CIFAR100(
             root=self.data_dir,
             train=True,
             download=True,
@@ -115,8 +115,8 @@ class Cifar10CSTMDatasetCreator:
 
 
 if __name__ == "__main__":
-    cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
-    test_dataloader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
-    train_valid_dataloaders = cifar10_dataset_creator.create_loaders()
+    cifar100_dataset_creator = Cifar100CSTMDatasetCreator()
+    test_dataloader = cifar100_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+    train_valid_dataloaders = cifar100_dataset_creator.create_loaders()
     train_dataloader = train_valid_dataloaders["train"]
     valid_dataloader = train_valid_dataloaders["valid"]

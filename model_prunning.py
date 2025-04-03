@@ -10,7 +10,7 @@ from tqdm import tqdm
 from regularizations import filter_regularization_feature_from_weights, filter_regularization_feature_from_entropy, \
     filter_regularization_feature_from_rademacher, filter_regularization_feature_from_entropy_inv, \
     filter_regularization_feature_from_rademacher_inv
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity, inner_data_entropy, inner_data_weights, \
     inner_data_entropy_inv, rademacher_complexity_inv
 from validation import validate_model
