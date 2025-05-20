@@ -6,6 +6,7 @@ from typing import Dict, Tuple
 
 import numpy
 import numpy as np
+import pandas
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -42,8 +43,8 @@ class CustomImageDataset(Dataset):
         return image, class_id
 
 
-class CropDiseaseCSTMDatasetCreator:
-    def __init__(self, data_dir: Path = Path("/media/kirrog/data/data/fqwb_data/data/crop_disease/prepared"),
+class TinyImagenetCSTMDatasetCreator:
+    def __init__(self, data_dir: Path = Path("/media/kirrog/data/data/fqwb_data/data/tiny_imagenet/prepared"),
                  batch_size: int = 1024,
                  random_seed: int = 42,
                  valid_size: float = 0.1,
@@ -64,7 +65,7 @@ class CropDiseaseCSTMDatasetCreator:
         self.shuffle = shuffle
         self.num_of_workers = num_of_workers
         self.image_size = image_size
-        logger.info("CropDiseaseDataCreator init")
+        logger.info("VehiclesDataCreator init")
 
     def create_loaders(self, create_test_dataloader: bool = False) -> Dict[str, torch.utils.data.DataLoader]:
         logger.info(f"Create dataloader: is_test:{create_test_dataloader}")
@@ -142,19 +143,21 @@ class CropDiseaseCSTMDatasetCreator:
 
 def converting_archive2format():
     new_size = (32, 32)
-    train_part, valid_part, test_part = 0.8, 0.1, 0.1
-    p = Path("/media/kirrog/data/data/fqwb_data/data/crop_disease")
-    images_list = list(p.glob("archive/*/*.jpg"))
+    train_part, test_part = 0.9, 0.1
+    p = Path("/media/kirrog/data/data/fqwb_data/data/tiny_imagenet")
+    output_path = p / "prepared"
+
+
+    images_list = list((p / "archive/tiny-imagenet-200/train").glob("*/images/*.JPEG"))
     labels_ids = dict()
     train_labels_ids_stats = defaultdict(int)
     max_width = 0
     max_height = 0
-    output_path = p / "prepared"
     print(f"Save to: {output_path}")
     labels_id2img_list = defaultdict(list)
     for i, img_path in enumerate(tqdm(images_list, desc="Reading")):
         try:
-            label_name = str(img_path.parent.name)
+            label_name = str(img_path.parent.parent.name)
             if label_name in labels_ids:
                 label_id = labels_ids[label_name]
             else:
@@ -166,6 +169,12 @@ def converting_archive2format():
             max_height = max(max_height, height_)
             resized_img = img.resize(new_size)
             resized_img_np = numpy.array(resized_img)
+            if resized_img_np.size == 32 * 32:
+                resized_img_np = numpy.stack([resized_img_np, resized_img_np, resized_img_np], axis=2)
+            elif resized_img_np.size == 32 * 32 * 4:
+                resized_img_np = resized_img_np[:, :, :3]
+            elif resized_img_np.size != 32 * 32 * 3:
+                print(resized_img_np.shape)
             labels_id2img_list[label_id].append(resized_img_np)
             train_labels_ids_stats[label_id] += 1
         except:
@@ -174,30 +183,61 @@ def converting_archive2format():
     print(len(train_labels_ids_stats))
     print((max_width, max_height))
     train_img_list = []
-    valid_img_list = []
     test_img_list = []
     train_label_ids_list = []
-    valid_label_ids_list = []
     test_label_ids_list = []
     for label_id, img_list in labels_id2img_list.items():
         train_valid_size = int(len(img_list) * train_part)
-        valid_test_size = train_valid_size + int(len(img_list) * valid_part)
         l = img_list[:train_valid_size]
         train_img_list.extend(l)
         train_label_ids_list.extend([label_id for x in range(len(l))])
-        l = img_list[train_valid_size:valid_test_size]
-        valid_img_list.extend(l)
-        valid_label_ids_list.extend([label_id for x in range(len(l))])
-        l = img_list[valid_test_size:]
+        l = img_list[train_valid_size:]
         test_img_list.extend(l)
         test_label_ids_list.extend([label_id for x in range(len(l))])
 
     numpy.save(output_path / "train_data.npy", numpy.stack(train_img_list))
     numpy.save(output_path / "train_labels.npy", numpy.array(train_label_ids_list))
-    numpy.save(output_path / "valid_data.npy", numpy.stack(valid_img_list))
-    numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
+
     numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
     numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
+
+    valid_images_list = list((p / "archive/tiny-imagenet-200/val/images").glob("*.JPEG"))
+    img_name2img_data = dict()
+    max_width = 0
+    max_height = 0
+    for img_path in tqdm(valid_images_list, desc="Validation read"):
+        try:
+            img = Image.open(img_path)
+            width_, height_ = img.size
+            max_width = max(max_width, width_)
+            max_height = max(max_height, height_)
+            resized_img = img.resize(new_size)
+            resized_img_np = numpy.array(resized_img)
+            if resized_img_np.size == 32 * 32:
+                resized_img_np = numpy.stack([resized_img_np, resized_img_np, resized_img_np], axis=2)
+            elif resized_img_np.size == 32 * 32 * 4:
+                resized_img_np = resized_img_np[:, :, :3]
+            elif resized_img_np.size != 32 * 32 * 3:
+                print(resized_img_np.shape)
+            img_name2img_data[img_path.name] = resized_img_np
+        except:
+            pass
+
+    valid_annotations_list = pandas.read_csv(str(p / "archive/tiny-imagenet-200/val/val_annotations.txt"), sep="\t",
+                                             header=None, usecols=[0, 1])
+    valid_labels_id2img_list = defaultdict(list)
+    for i, row in valid_annotations_list.iterrows():
+        label_name = row[1]
+        valid_labels_id2img_list[labels_ids[label_name]].append(img_name2img_data[row[0]])
+
+    valid_img_list = []
+    valid_label_ids_list = []
+    for label_id, img_list in valid_labels_id2img_list.items():
+        valid_img_list.extend(img_list)
+        valid_label_ids_list.extend([label_id for x in range(len(img_list))])
+
+    numpy.save(output_path / "valid_data.npy", numpy.stack(valid_img_list))
+    numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
 
     with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
         json.dump(labels_ids, f, ensure_ascii=False)
@@ -205,9 +245,9 @@ def converting_archive2format():
 
 if __name__ == "__main__":
     converting_archive2format()
-    # crop_disease_dataset_creator = CropDiseaseCSTMDatasetCreator()
-    # test_dataloader = crop_disease_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
-    # train_valid_dataloaders = crop_disease_dataset_creator.create_loaders()
+    # vehicles_dataset_creator = TinyImagentCSTMDatasetCreator()
+    # test_dataloader = vehicles_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+    # train_valid_dataloaders = vehicles_dataset_creator.create_loaders()
     # train_dataloader = train_valid_dataloaders["train"]
     # valid_dataloader = train_valid_dataloaders["valid"]
     # for case in train_dataloader:

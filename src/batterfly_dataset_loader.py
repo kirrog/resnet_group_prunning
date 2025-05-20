@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Tuple
@@ -202,6 +203,9 @@ def converting_archive2format():
     numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
     numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
 
+    with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
+        json.dump(labels_ids, f, ensure_ascii=False)
+
 
 if __name__ == "__main__":
     # converting_archive2format()
@@ -210,5 +214,10 @@ if __name__ == "__main__":
     train_valid_dataloaders = butterfly_dataset_creator.create_loaders()
     train_dataloader = train_valid_dataloaders["train"]
     valid_dataloader = train_valid_dataloaders["valid"]
+    print(len(test_dataloader))
+    print(len(train_dataloader))
+    print(len(valid_dataloader))
+
     for case in train_dataloader:
         print()
+        exit(0)

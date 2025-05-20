@@ -11,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from regularizations import *
-from src.batterfly_dataset_loader import BatterflyCSTMDatasetCreator
+from src.brests_histopathology_dataset_loader import BreastHistCSTMDatasetCreator
 from src.dirs_struct import DirsStruct
 from src.loggers import create_logger
 from src.model import ResNet, ResidualBlock
@@ -141,8 +141,9 @@ class ModelTrainer:
 
             cut_worst_epoches(self.model_out_dir, self.cut_worst_amount)
 
-            if epoch > self.loss_up_period and min(train_last_losses[-self.loss_up_period - 1:-1]) >= train_last_losses[-1] and max(
-                    valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
+            if epoch > self.loss_up_period and min(train_last_losses[-self.loss_up_period - 1:-1]) >= train_last_losses[
+                -1] and max(
+                valid_last_losses[-self.loss_up_period - 1:-1]) < valid_last_losses[-1]:
                 print(f"Valid loss stop decreasing for {self.loss_up_period} epoches. Stop training")
                 break
 
@@ -155,7 +156,15 @@ class ModelTrainer:
 dataset_list = [
     # ("cifar10", Cifar10CSTMDatasetCreator, 10)
     # ("cifar100", Cifar100CSTMDatasetCreator, 100)
-    ("butterfly", BatterflyCSTMDatasetCreator, 75)
+    # ("butterfly", BatterflyCSTMDatasetCreator, 75)
+    # ("bloodcells", BloodCellsCSTMDatasetCreator, 8)
+    # ("crop", CropDiseaseCSTMDatasetCreator, 22)
+    # ("flowers", FlowersCSTMDatasetCreator, 5)
+    # ("fourniture", FournitureCSTMDatasetCreator, 32)
+    # ("houseplant", HousePlantCSTMDatasetCreator, 47)
+    # ("vehicle", VehiclesCSTMDatasetCreator, 7)
+    # ("tinyimagenet", TinyImagenetCSTMDatasetCreator, 200)
+    ("breast", BreastHistCSTMDatasetCreator, 2)
 ]
 
 filter_regularization_2coefs_losses_list = [
@@ -189,10 +198,10 @@ coefs1 = [
 models_path = Path("/media/kirrog/Expansion/models")
 init_weights = [
     ('none', None),
-    # ('v1', models_path / "2025_04_02__16_14___cifar100__none__none__/ep_025_acc_0.544400.bin"),  # V1
-    ('v1', models_path / "2025_04_03__13_31___butterfly__none__none__/ep_043_acc_0.611021.bin"),  # V1
-    # ('v2', models_path / "2025_04_02__16_35___cifar100_long__none__none__/ep_058_acc_0.580000.bin")  # V2
-    ('v2', models_path / "2025_04_03__14_08___butterfly_long__none__none__/ep_479_acc_0.742301.bin")  # V2
+    # ('v1', models_path / "2025_04_05__16_07___bloodcells__none__none__/ep_018_acc_0.946041.bin"),  # V1
+    # ('v1', models_path / "2025_05_06__15_27___breast__none__none__/ep_003_acc_0.856546.bin"),  # V1
+    # ('v2', models_path / "2025_04_05__16_16___bloodcells_long__none__none__/ep_333_acc_0.967742.bin")  # V2
+    # ('v2', models_path / "2025_05_06__20_26___breast_long__none__none__/ep_002_acc_0.858780.bin")  # V2
 ]
 
 experiments_list = []
@@ -235,8 +244,7 @@ for name, dataset_class_, num_classes_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list[4:] # [25:]
-
+experiments_list = experiments_list
 
 pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")

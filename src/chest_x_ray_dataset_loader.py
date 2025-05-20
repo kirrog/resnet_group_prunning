@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from pathlib import Path
 from pprint import pprint
@@ -204,6 +205,9 @@ def converting_archive2format():
     numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
     numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
     numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
+
+    with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
+        json.dump(labels_ids, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":

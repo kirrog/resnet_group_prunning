@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from pathlib import Path
 from pprint import pprint
@@ -206,13 +207,16 @@ def converting_archive2format():
     numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
     numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
 
+    with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
+        json.dump(labels_ids, f, ensure_ascii=False)
+
 
 if __name__ == "__main__":
-    converting_archive2format()
-    # house_plant_dataset_creator = HousePlantCSTMDatasetCreator()
-    # test_dataloader = house_plant_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
-    # train_valid_dataloaders = house_plant_dataset_creator.create_loaders()
-    # train_dataloader = train_valid_dataloaders["train"]
-    # valid_dataloader = train_valid_dataloaders["valid"]
-    # for case in train_dataloader:
-    #     print()
+    # converting_archive2format()
+    house_plant_dataset_creator = HousePlantCSTMDatasetCreator()
+    test_dataloader = house_plant_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+    train_valid_dataloaders = house_plant_dataset_creator.create_loaders()
+    train_dataloader = train_valid_dataloaders["train"]
+    valid_dataloader = train_valid_dataloaders["valid"]
+    for case in train_dataloader:
+        print()

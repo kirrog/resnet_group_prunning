@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Tuple
@@ -151,7 +152,7 @@ def converting_archive2format():
     print(f"Save to: {output_path}")
     labels_id2img_list = defaultdict(list)
     for i, img_path in enumerate(tqdm(images_list, desc="Reading")):
-        label_name = str(img_path.name).split("_")[0]
+        label_name = str(img_path.parent.name)
         if label_name in labels_ids:
             label_id = labels_ids[label_name]
         else:
@@ -194,6 +195,9 @@ def converting_archive2format():
     numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
     numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
     numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
+
+    with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
+        json.dump(labels_ids, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":

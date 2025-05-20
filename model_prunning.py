@@ -1,6 +1,7 @@
 import copy
 import gc
 import json
+import os
 from pathlib import Path
 
 import torch
@@ -10,14 +11,30 @@ from tqdm import tqdm
 from regularizations import filter_regularization_feature_from_weights, filter_regularization_feature_from_entropy, \
     filter_regularization_feature_from_rademacher, filter_regularization_feature_from_entropy_inv, \
     filter_regularization_feature_from_rademacher_inv
-from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
+from src.brests_histopathology_dataset_loader import BreastHistCSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity, inner_data_entropy, inner_data_weights, \
     inner_data_entropy_inv, rademacher_complexity_inv
 from validation import validate_model
 
+# ("cifar10", Cifar10CSTMDatasetCreator, 10)
+# ("cifar100", Cifar100CSTMDatasetCreator, 100)
+# ("butterfly", BatterflyCSTMDatasetCreator, 75)
+# ("bloodcells", BloodCellsCSTMDatasetCreator, 8)
+# ("crop", CropDiseaseCSTMDatasetCreator, 22)
+# ("flowers", FlowersCSTMDatasetCreator, 5)
+# ("fourniture", FournitureCSTMDatasetCreator, 32)
+# ("houseplant", HousePlantCSTMDatasetCreator, 47)
+# ("vehicle", VehiclesCSTMDatasetCreator, 7)
+# ("tinyimagenet", TinyImagenetCSTMDatasetCreator, 200)
+# ("breast", BreastHistCSTMDatasetCreator, 2)
 
-def init_model(mode_path: Path):
-    model = ResNet(ResidualBlock, [3, 1, 1, 3])
+dataset_name = "breast"
+dataset_num_classes = 2
+dataset_creator_class = BreastHistCSTMDatasetCreator
+
+
+def init_model(mode_path: Path, num_classes):
+    model = ResNet(ResidualBlock, [3, 1, 1, 3], num_classes)
     model.load_state_dict(torch.load(mode_path))
     model.eval()
     model = model.to("cuda")
@@ -70,7 +87,8 @@ def search_by_prunning(criterion,
                        init_step_sizes,
                        model_path_out: Path,
                        model_path_in: Path):
-    model = init_model(model_path_in)
+    print(model_path_in)
+    model = init_model(model_path_in, dataset_num_classes)
 
     init_acc, init_loss = validate_and_calc_features_model(model, inner_data_regularization_function, test_loader,
                                                            device,
@@ -79,7 +97,7 @@ def search_by_prunning(criterion,
 
     print(f"Inner: {inner_data_regularization_name}. "
           f"Weights: {weights_regularization_name}. "
-          f"Init model. Test dataset: accuracy: {init_acc} loss: {init_loss}")
+          f"Init model. Test dataset: accuracy: {init_acc:0.5f} loss: {init_loss:0.5f}")
 
     current_step_sizes = init_step_sizes
     current_steps = [0, 0, 0, 0]
@@ -92,9 +110,8 @@ def search_by_prunning(criterion,
     with torch.no_grad():
         for i in pbar:
             current_stats = []
-
             for layer_num in range(4):
-                if current_steps[layer_num] + current_step_sizes[layer_num] == max_steps[layer_num]:
+                if current_steps[layer_num] + 2 * current_step_sizes[layer_num] >= max_steps[layer_num]:
                     current_stats.append((layer_num, 0.0, -(current_acc - 0.0) / stats["size_value"]))
                     continue
                 model = copy.deepcopy(prev_model).cuda()
@@ -103,8 +120,8 @@ def search_by_prunning(criterion,
                 pos_str = "_".join([str(x) for x in current_steps_changes])
 
                 pbar.set_postfix_str(f"step: {layer_num}/4 "
-                                     f"currant_acc: {current_acc} "
-                                     f"step_acc: {step_acc} "
+                                     f"currant_acc: {current_acc:0.5f} "
+                                     f"step_acc: {step_acc:0.5f} "
                                      f"current_steps: {pos_str}")
                 if pos_str in search_stats:
                     step_acc, stats = search_stats[pos_str]
@@ -122,7 +139,7 @@ def search_by_prunning(criterion,
                 del model
             layer2delete, new_acc, per_acc_drop_weight = list(sorted(current_stats, key=lambda x: x[2]))[-1]
             if new_acc + possible_drop < init_acc:
-                print(f"Found best cut: acc: {current_acc} 2cut: {current_steps}")
+                print(f"Found best cut: acc: {current_acc:0.5f} 2cut: {current_steps}")
                 break
             else:
                 current_acc = new_acc
@@ -173,15 +190,17 @@ weights_regularization_functions = [
 
 init_step_sizes = [1, 1, 8, 8]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-output_path = Path(f"./model/v1_pos_drop_{possible_drop}")
+output_path = Path(f"./model/{dataset_name}_v1_pos_drop_{possible_drop}")
 output_path.mkdir(parents=True, exist_ok=True)
-cifar10_dataset_creator = Cifar10CSTMDatasetCreator()
-test_loader = list(cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"])
+
+dataset_creator = dataset_creator_class()
+
+test_loader = list(dataset_creator.create_loaders(create_test_dataloader=True)["test"])
 criterion = nn.CrossEntropyLoss()
 points_per_experiment = 3
 
 experiments_root_dir = Path("/media/kirrog/Expansion/models")
-experiments_list = list(experiments_root_dir.glob("*"))
+experiments_list = list(experiments_root_dir.glob(f"*{dataset_name}*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
 possible_tasks = []
@@ -208,6 +227,7 @@ for experiment_path in experiments_list:
         sorted([(x, float(str(x.name).split("_")[-1][:-4])) for x in epoches_paths], key=lambda x: x[1]))[
                          -points_per_experiment:]
     num_epoch_list.append(len(epoches_best_paths))
+    jsons_paths_exists_list = [str(x) for x in experiment_output_path.glob("*")]
     for epoch_path, acc in epoches_best_paths:
         for inner_regularization_name, inner_regularization_function in inner_regularization_functions:
             for weights_regularization_name, weights_regularization_function in weights_regularization_functions:
@@ -216,14 +236,19 @@ for experiment_path in experiments_list:
                                                           f"weights_reg_{weights_regularization_name}__"
                                                           f"stats.json")
                 possible_tasks.append(json_path_out)
+                if str(json_path_out) in jsons_paths_exists_list:
+                    jsons_paths_exists_list.remove(str(json_path_out))
                 if inner_regularization_name == "none" and weights_regularization_name == "none":
                     continue
-                if weights_regularization_name != reg_name:
+                if weights_regularization_name != "none" and weights_regularization_name != reg_name:
                     continue
                 if not json_path_out.exists():
                     tasks.append(
                         (inner_regularization_function, inner_regularization_name, weights_regularization_function,
                          weights_regularization_name, experiment_output_path, epoch_path))
+    for json_rm_path in jsons_paths_exists_list:
+        os.remove(json_rm_path)
+        print(f"File removed: {json_rm_path}")
 print(f"Tasks amount: {len(tasks)}")
 print(f"Possible tasks amount: {len(possible_tasks)}")
 print(f"Epoches amount: {sum(num_epoch_list)}")
@@ -233,7 +258,7 @@ for (inner_regularization_function,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks[600:]:
+     epoch_path) in tasks:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,
