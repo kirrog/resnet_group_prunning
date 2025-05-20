@@ -6,7 +6,8 @@ from typing import List
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import legend
 
-stats_root_dir = Path("/home/kirrog/projects/FQWB/model/v1_pos_drop_0.0")
+dataset_name = "bloodcells"
+stats_root_dir = Path(f"/home/kirrog/projects/FQWB/model/{dataset_name}_v1_pos_drop_0.0")
 
 index_order_weight = [
     "none",
@@ -36,6 +37,7 @@ def comb2delete_num(comb: List[int]) -> int:
         acc += comb_num * comb_filters
     return acc
 
+
 experiments_dict = dict()
 
 for cut_exp_path in stats_root_dir.glob("*"):
@@ -47,19 +49,22 @@ for cut_exp_path in stats_root_dir.glob("*"):
     init_type = "raw"
     if len(splitted_exp_name) > 3:
         init_type = splitted_exp_name[3]
-        reg_values = splitted_exp_name[-1]
         learn_reg = splitted_exp_name[-2]
-        learn_orig_reg = learn_reg
-        if learn_reg == "radem_v2-inv":
-            learn_reg = "radem-inv"
-        if learn_reg == "radem_v2":
-            learn_reg = "radem"
-        if learn_reg == "entropy":
-            learn_reg = "entr"
-        if learn_reg == "entropy-inv":
-            learn_reg = "entr-inv"
-        if learn_reg == "weights":
-            learn_reg = "weight"
+        reg_values = splitted_exp_name[-1]
+        if reg_values != "":
+            learn_orig_reg = learn_reg
+            if learn_reg == "radem_v2-inv":
+                learn_reg = "radem-inv"
+            if learn_reg == "radem_v2":
+                learn_reg = "radem"
+            if learn_reg == "entropy":
+                learn_reg = "entr"
+            if learn_reg == "entropy-inv":
+                learn_reg = "entr-inv"
+            if learn_reg == "weights":
+                learn_reg = "weight"
+        else:
+            init_type = "raw"
     epoch_lowest_acc = [1.0]
     for cutting_stats_path in cut_exp_path.glob("*.json"):
         init_acc = float(str(cutting_stats_path.name).split("__")[0].split("_")[-1])
@@ -122,5 +127,5 @@ for cut_exp_path in stats_root_dir.glob("*"):
         params = [init_type, epoch, weight_reg_func_name, inner_reg_func_name, learn_orig_reg, reg_values]
         experiments_dict["___".join([str(x) for x in params])] = (del_num__list, acc__list, epoch_lowest_acc)
 
-with open("prepared_cuttings_stats.json", "w", encoding="utf-8") as f:
+with open(f"./prepared_data/{dataset_name}_prepared_cuttings_stats.json", "w", encoding="utf-8") as f:
     json.dump(experiments_dict, f)
