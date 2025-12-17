@@ -6,7 +6,6 @@ from typing import Dict, Tuple
 
 import numpy
 import numpy as np
-import pandas
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -44,7 +43,9 @@ class CustomImageDataset(Dataset):
 
 
 class Imagenet1kCSTMDatasetCreator:
-    def __init__(self, data_dir: Path = Path("/media/kirrog/data/data/fqwb_data/data/imagenet1k/prepared"),
+    def __init__(self, data_dir: Path =
+    Path("/media/kirrog/data/data/fqwb_data/data/imagenet1k/prepared"
+         ),
                  batch_size: int = 1024,
                  random_seed: int = 42,
                  valid_size: float = 0.1,
@@ -194,6 +195,9 @@ def converting_archive2format():
         test_img_list.extend(l)
         test_label_ids_list.extend([label_id for x in range(len(l))])
 
+    print(f"Train amount: {len(train_img_list)}")
+    print(f"Test amount: {len(test_img_list)}")
+
     numpy.save(output_path / "train_data.npy", numpy.stack(train_img_list))
     numpy.save(output_path / "train_labels.npy", numpy.array(train_label_ids_list))
 
@@ -229,6 +233,8 @@ def converting_archive2format():
     for label_id, img_list in valid_labels_id2img_list.items():
         valid_img_list.extend(img_list)
         valid_label_ids_list.extend([label_id for x in range(len(img_list))])
+
+    print(f"Valid amount: {len(valid_img_list)}")
 
     numpy.save(output_path / "valid_data.npy", numpy.stack(valid_img_list))
     numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))

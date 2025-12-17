@@ -2,7 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 from pprint import pprint
 
-models_root_dir = Path("/media/kirrog/data/data/fqwb_data/models")
+models_root_dir = Path("/media/kirrog/Expansion/models")
 
 init_stats = dict()
 init_versions = defaultdict(dict)

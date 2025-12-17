@@ -6,9 +6,11 @@ prunning_stats_path_dir = Path("/home/kirrog/projects/FQWB/model")
 
 dataset_elements_set_list = []
 for dataset_dir_path in prunning_stats_path_dir.glob("*"):
+    dataset_name = str(dataset_dir_path.name)[:-16]
+    if dataset_name == "breast":
+        continue
     dataset_elements_set = set()
     dataset_elements_set_list.append(dataset_elements_set)
-    dataset_name = str(dataset_dir_path.name)[:-16]
     methods_stats_list = []
     for prunning_exp_dir in list(dataset_dir_path.glob("*")):
         epoch2stats = defaultdict(list)

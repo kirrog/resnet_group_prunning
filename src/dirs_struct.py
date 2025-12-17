@@ -5,8 +5,10 @@ from typing import Tuple
 
 class DirsStruct:
     # root_path_models: Path = Path("/media/kirrog/data/data/fqwb_data/models")
-    root_path_models: Path = Path("/media/kirrog/Expansion/models")
-    root_path_stats: Path = Path("/media/kirrog/data/data/fqwb_data/stats")
+    # root_path_models: Path = Path("/media/kirrog/Expansion/models")
+    root_path_models: Path = Path("/root/projects/fqwb/data/models")
+    # root_path_stats: Path = Path("/media/kirrog/data/data/fqwb_data/stats")
+    root_path_stats: Path = Path("/root/projects/fqwb/data/train_stats")
 
     def get_stats__and_model_save_path(self, experiment_name: str) -> Tuple[Path, Path]:
         now_datetime = datetime.datetime.now()

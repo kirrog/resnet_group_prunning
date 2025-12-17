@@ -4,8 +4,10 @@ from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.pyplot import figure
 from tqdm import tqdm
 
+figure(figsize=(8, 6), dpi=80)
 prunning_stats_path_dir = Path("/home/kirrog/projects/FQWB/model")
 output_path = Path("./results")
 with open("./results/experiment_hyperparameters2compare.json", "r", encoding="utf-8") as f:
@@ -32,10 +34,6 @@ def calc_min_mean_max_disp_range(data_array):
     return min_value, float(np.mean(data_array)), max_value, float(np.var(data_array)), float(max_value - min_value)
 
 
-###################################
-###################################
-###################################
-###################################
 ###################################
 
 def calc_acc_min_mean_max_disp_range(ordered_list):
@@ -209,9 +207,42 @@ def printing_diagrams(label2values_dict, ylabel_str, xlabel_str, output_dir_path
     plt.close()
 
 
+def print_compare_diagram(output_path, dataset_name, diagram_name, all_dict, prunned_dict):
+    fig, ax = plt.subplots()
+
+    # fruits = ['apple', 'blueberry', 'cherry', 'orange']
+    # counts = [40, 100, 30, 55]
+    # bar_labels = ['red', 'blue', '_red', 'orange']
+    bar_colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
+
+    keys_union = set(all_dict.keys()).union(set(prunned_dict.keys()))
+    value_list = []
+    labels_list = []
+
+    for key in sorted(keys_union):
+        ratio = prunned_dict[key] / all_dict[key]
+        value_list.append(ratio)
+        labels_list.append(key)
+
+    ax.bar(labels_list, value_list, color=bar_colors)
+    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
+
+    ax.set_ylabel('Доля успешных прореживаний')
+    ax.set_title(f'{diagram_name}')
+    # ax.legend(title='Fruit color')
+
+    plt.savefig(output_path / f"{dataset_name}.png")
+
+
 for dataset_dir_path in prunning_stats_path_dir.glob("*"):
     dataset_name = str(dataset_dir_path.name)[:-16]
+    if dataset_name == "breast":
+        continue
     methods_stats_list = []
+    processed_counter = 0
+    method2all_amount = defaultdict(int)
+    method2prunned_amount = defaultdict(int)
+
     for prunning_exp_dir in tqdm(list(dataset_dir_path.glob("*")), desc=f"Processing: {dataset_name}"):
         epoch2stats = defaultdict(list)
         prunning_exp_dir_splitted = str(prunning_exp_dir.name).split("__")
@@ -219,6 +250,7 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
         regularization_method = prunning_exp_dir_splitted[-2:]
         if regularization_method[0] in ["radem", "radem-inv"]:
             continue
+        processed_counter += 1
         for prunning_stats_elem_path in list(prunning_exp_dir.glob("*.json")):
             init_ep, inner_reg, weights_reg, _ = list(str(prunning_stats_elem_path.name).split("__"))
             _, _, ep_num, _, acc_val = list(init_ep.split("_"))
@@ -293,8 +325,54 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
             if ordered_len + neighbours_len != data_len:
                 print(f"{ordered_len} + {neighbours_len} = {data_len} : {prunning_stats_elem_path}")
 
+            reg_method_ = regularization_method[0]
+            if reg_method_ == "radem_v2":
+                reg_method_ = "radem"
+            if reg_method_ == "radem_v2-inv":
+                reg_method_ = "neg_radem"
+            if reg_method_ == "entropy-inv":
+                reg_method_ = "neg_entropy"
+            if reg_method_ == "weight":
+                reg_method_ = "L1_L2"
+            if reg_method_ == "weights":
+                reg_method_ = "L1_L2"
+            if reg_method_ == "none":
+                reg_method_ = "default"
+
+            prune_inner_method_ = inner_reg
+            if prune_inner_method_ == "entr-inv":
+                prune_inner_method_ = "neg_entr"
+            if prune_inner_method_ == "radem-inv":
+                prune_inner_method_ = "neg_radem"
+            if prune_inner_method_ == "weight":
+                prune_inner_method_ = "L1_L2"
+            if prune_inner_method_ == "none":
+                prune_inner_method_ = "default"
+
+            prune_weight_method_ = weights_reg
+            if prune_weight_method_[0] == "_":
+                prune_weight_method_ = prune_weight_method_[1:]
+            if prune_weight_method_ == "entr-inv":
+                prune_weight_method_ = "neg_entr"
+            if prune_weight_method_ == "radem-inv":
+                prune_weight_method_ = "neg_radem"
+            if prune_weight_method_ == "weight":
+                prune_weight_method_ = "L1_L2"
+            if prune_weight_method_ == "none":
+                prune_weight_method_ = "default"
+
             if len(ordered_stats) <= 1:
+                method2all_amount[f"{reg_method_}___"
+                                  f"{prune_inner_method_}___"
+                                  f"{prune_weight_method_}"] += 1
                 continue
+            else:
+                method2all_amount[f"{reg_method_}___"
+                                  f"{prune_inner_method_}___"
+                                  f"{prune_weight_method_}"] += 1
+                method2prunned_amount[f"{reg_method_}___"
+                                      f"{prune_inner_method_}___"
+                                      f"{prune_weight_method_}"] += 1
 
             stat_func_results = dict()
             stat_func_results["init_form"] = init_form
@@ -307,166 +385,266 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
                 stat_func_results[f"{stat_name}_stat_range"] = stat_range
             for stat_name, stat_func in calc_unique_feature_list:
                 stat_func_results[stat_name] = stat_func(ordered_stats)
-            stat_func_results["reg_method"] = regularization_method[0]
+
+            stat_func_results["reg_method"] = reg_method_
             stat_func_results["reg_params"] = regularization_method[1]
-            stat_func_results["prune_inner_method"] = inner_reg
-            stat_func_results["prune_weight_method"] = weights_reg
+
+            stat_func_results["prune_inner_method"] = prune_inner_method_
+
+            stat_func_results["prune_weight_method"] = prune_weight_method_
+
             methods_stats_list.append(stat_func_results)
 
-    # reg_method - labels - reg_method
-    reg_method_output_path = output_path / "reg_method"
+    reg_method_output_path = output_path / "acc_agreg" / "inner_deleted_mean"
+    reg_method_output_path.mkdir(exist_ok=True, parents=True)
     reg_method_params_dict = defaultdict(list)
     for stat_elem in methods_stats_list:
-        reg_method_params_dict[stat_elem["reg_method"]].append(stat_elem)
+        reg_method_params_dict[stat_elem["prune_inner_method"]].append(stat_elem["deleted_weights_amount"])
 
-    for stat_name, _ in calc_dict_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
-            stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
-            stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+    value_list = []
+    labels_list = []
+    for inner_method_name, deleted_weights_list in sorted(reg_method_params_dict.items(), key=lambda x: x[0]):
+        value_list.append(sum(deleted_weights_list) / len(deleted_weights_list))
+        labels_list.append(inner_method_name)
+    fig, ax = plt.subplots()
+    bar_colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
+    ax.bar(labels_list, value_list, color=bar_colors)
+    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
 
-            label2values_dict = dict()
-            for label, values_list in reg_method_params_dict.items():
-                label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
+    ax.set_ylabel('Среднее число удаленных весов')
+    ax.set_title(f'Сравнение оценок активаций')
+    # ax.legend(title='Fruit color')
 
-            if len(label2values_dict) == 0:
-                continue
-            printing_diagrams(label2values_dict,
-                              f"Score: {stat_name} : {stat}",
-                              "Regularization methods",
-                              stat_reg_method_stat_name_output_dir_path, dataset_name)
+    plt.savefig(reg_method_output_path / f"{dataset_name}.png")
+    plt.close()
 
 
 
-    for stat_name, _ in calc_unique_feature_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
-        label2values_dict = dict()
-        for label, values_list in reg_method_params_dict.items():
-            label2values_dict[label] = np.array([x[stat_name] for x in values_list])
 
-        if len(label2values_dict) == 0:
-            continue
-        printing_diagrams(label2values_dict,
-                          f"Score: {stat_name}",
-                          "Regularization methods",
-                          reg_method_stat_name_output_dir_path, dataset_name)
 
-    # reg_method - labels - reg_params for each method
-    reg_method_output_path = output_path / "reg_params"
+
+    reg_method_output_path = output_path / "acc_agreg" / "weight_deleted_mean"
     reg_method_params_dict = defaultdict(list)
-    methods_set = set()
+    reg_method_output_path.mkdir(exist_ok=True, parents=True)
     for stat_elem in methods_stats_list:
-        methods_set.add(stat_elem["reg_method"])
-        reg_method_params_dict[stat_elem["reg_params"]].append(stat_elem)
+        reg_method_params_dict[stat_elem["prune_weight_method"]].append(stat_elem["deleted_weights_amount"])
 
-    for method_name in methods_set:
-        reg_method_param_stat_name_output_dir_path = reg_method_output_path / method_name
-        for stat_name, _ in calc_dict_list:
-            reg_method_stat_name_output_dir_path = reg_method_param_stat_name_output_dir_path / stat_name
-            for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
-                stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
-                stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+    value_list = []
+    labels_list = []
+    for inner_method_name, deleted_weights_list in sorted(reg_method_params_dict.items(), key=lambda x: x[0]):
+        value_list.append(sum(deleted_weights_list) / len(deleted_weights_list))
+        labels_list.append(inner_method_name)
+    fig, ax = plt.subplots()
+    bar_colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
+    ax.bar(labels_list, value_list, color=bar_colors)
+    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
 
-                label2values_dict = dict()
-                for label, values_list in reg_method_params_dict.items():
-                    reg_method_elements_list = [x[f"{stat_name}_{stat}"] for x in values_list if
-                                                x["reg_method"] == method_name]
-                    if len(reg_method_elements_list) == 0:
-                        continue
-                    label2values_dict[label] = np.array(reg_method_elements_list)
+    ax.set_ylabel('Среднее число удаленных весов')
+    ax.set_title(f'Сравнение оценок параметров')
+    # ax.legend(title='Fruit color')
 
-                if len(label2values_dict) == 0:
-                    continue
-                printing_diagrams(label2values_dict,
-                                  f"Score: {stat_name} : {stat}",
-                                  f"Regularization of {method_name} method parameters",
-                                  stat_reg_method_stat_name_output_dir_path, dataset_name)
+    plt.savefig(reg_method_output_path / f"{dataset_name}.png")
+    plt.close()
 
-        for stat_name, _ in calc_unique_feature_list:
-            reg_method_stat_name_output_dir_path = reg_method_param_stat_name_output_dir_path / stat_name
-            reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
-            label2values_dict = dict()
-            for label, values_list in reg_method_params_dict.items():
-                label2values_dict[label] = np.array([x[stat_name] for x in values_list])
 
-            if len(label2values_dict) == 0:
-                continue
-            printing_diagrams(label2values_dict,
-                              f"Score: {stat_name}",
-                              f"Regularization of {method_name} method parameters",
-                              reg_method_stat_name_output_dir_path, dataset_name)
 
-    # prune_inner_method - labels - prune_inner_method
-    reg_method_output_path = output_path / "inner_method"
-    reg_method_params_dict = defaultdict(list)
-    for stat_elem in methods_stats_list:
-        reg_method_params_dict[stat_elem["prune_inner_method"]].append(stat_elem)
 
-    for stat_name, _ in calc_dict_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
-            stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
-            stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
 
-            label2values_dict = dict()
-            for label, values_list in reg_method_params_dict.items():
-                label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
 
-            if len(label2values_dict) == 0:
-                continue
-            printing_diagrams(label2values_dict,
-                              f"Score: {stat_name} : {stat}",
-                              "Prune inner methods",
-                              stat_reg_method_stat_name_output_dir_path, dataset_name)
 
-    for stat_name, _ in calc_unique_feature_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
-        label2values_dict = dict()
-        for label, values_list in reg_method_params_dict.items():
-            label2values_dict[label] = np.array([x[stat_name] for x in values_list])
+    # reg_method_dict_all = defaultdict(int)
+    # reg_method_dict_prunned = defaultdict(int)
+    # prune_inner_method_dict_all = defaultdict(int)
+    # prune_inner_method_dict_prunned = defaultdict(int)
+    # prune_weight_method_dict_all = defaultdict(int)
+    # prune_weight_method_dict_prunned = defaultdict(int)
+    #
+    # keys_ = set(method2prunned_amount.keys()).union(set(method2all_amount.keys()))
+    #
+    # for key in keys_:
+    #     reg_method, prune_inner_method_, prune_weight_method_ = key.split("___")
+    #
+    #     reg_method_dict_all[reg_method] += method2all_amount[key]
+    #     prune_inner_method_dict_all[prune_inner_method_] += method2all_amount[key]
+    #     prune_weight_method_dict_all[prune_weight_method_] += method2all_amount[key]
+    #
+    #     reg_method_dict_prunned[reg_method] += method2prunned_amount[key]
+    #     prune_inner_method_dict_prunned[prune_inner_method_] += method2prunned_amount[key]
+    #     prune_weight_method_dict_prunned[prune_weight_method_] += method2prunned_amount[key]
+    #
+    # ratio_output_path = output_path / "acc_agreg"
+    #
+    # reg_method_ratio_output_path = ratio_output_path / "reg_method"
+    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение регуляризаций",
+    #                       reg_method_dict_all,
+    #                       reg_method_dict_prunned)
+    #
+    # reg_method_ratio_output_path = ratio_output_path / "prune_inner"
+    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок активаций",
+    #                       prune_inner_method_dict_all,
+    #                       prune_inner_method_dict_prunned)
+    #
+    # reg_method_ratio_output_path = ratio_output_path / "prune_weight"
+    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок параметров",
+    #                       prune_weight_method_dict_all,
+    #                       prune_weight_method_dict_prunned)
 
-        if len(label2values_dict) == 0:
-            continue
-        printing_diagrams(label2values_dict,
-                          f"Score: {stat_name}",
-                          "Prune inner methods",
-                          reg_method_stat_name_output_dir_path, dataset_name)
-
-    # prune_weight_method - labels - prune_weight_method
-    reg_method_output_path = output_path / "weight_method"
-    reg_method_params_dict = defaultdict(list)
-    for stat_elem in methods_stats_list:
-        reg_method_params_dict[stat_elem["prune_weight_method"]].append(stat_elem)
-
-    for stat_name, _ in calc_dict_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
-            stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
-            stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
-
-            label2values_dict = dict()
-            for label, values_list in reg_method_params_dict.items():
-                label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
-
-            if len(label2values_dict) == 0:
-                continue
-            printing_diagrams(label2values_dict,
-                              f"Score: {stat_name} : {stat}",
-                              "Prune weight methods",
-                              stat_reg_method_stat_name_output_dir_path, dataset_name)
-
-    for stat_name, _ in calc_unique_feature_list:
-        reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
-        reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
-        label2values_dict = dict()
-        for label, values_list in reg_method_params_dict.items():
-            label2values_dict[label] = np.array([x[stat_name] for x in values_list])
-
-        if len(label2values_dict) == 0:
-            continue
-        printing_diagrams(label2values_dict,
-                          f"Score: {stat_name}",
-                          "Prune weight methods",
-                          reg_method_stat_name_output_dir_path, dataset_name)
+# print(f"Processed counter: {processed_counter}")
+# # reg_method - labels - reg_method
+# reg_method_output_path = output_path / "reg_method"
+# reg_method_params_dict = defaultdict(list)
+# for stat_elem in methods_stats_list:
+#     reg_method_params_dict[stat_elem["reg_method"]].append(stat_elem)
+#
+# for stat_name, _ in calc_dict_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
+#         stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
+#         stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#
+#         label2values_dict = dict()
+#         for label, values_list in reg_method_params_dict.items():
+#             label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
+#
+#         if len(label2values_dict) == 0:
+#             continue
+#         printing_diagrams(label2values_dict,
+#                           f"Score: {stat_name} : {stat}",
+#                           "Regularization methods",
+#                           stat_reg_method_stat_name_output_dir_path, dataset_name)
+#
+# for stat_name, _ in calc_unique_feature_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#     label2values_dict = dict()
+#     for label, values_list in reg_method_params_dict.items():
+#         label2values_dict[label] = np.array([x[stat_name] for x in values_list])
+#
+#     if len(label2values_dict) == 0:
+#         continue
+#     printing_diagrams(label2values_dict,
+#                       f"Score: {stat_name}",
+#                       "Regularization methods",
+#                       reg_method_stat_name_output_dir_path, dataset_name)
+#
+# # reg_method - labels - reg_params for each method
+# reg_method_output_path = output_path / "reg_params"
+# reg_method_params_dict = defaultdict(list)
+# methods_set = set()
+# for stat_elem in methods_stats_list:
+#     methods_set.add(stat_elem["reg_method"])
+#     reg_method_params_dict[stat_elem["reg_params"]].append(stat_elem)
+#
+# for method_name in methods_set:
+#     reg_method_param_stat_name_output_dir_path = reg_method_output_path / method_name
+#     for stat_name, _ in calc_dict_list:
+#         reg_method_stat_name_output_dir_path = reg_method_param_stat_name_output_dir_path / stat_name
+#         for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
+#             stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
+#             stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#
+#             label2values_dict = dict()
+#             for label, values_list in reg_method_params_dict.items():
+#                 reg_method_elements_list = [x[f"{stat_name}_{stat}"] for x in values_list if
+#                                             x["reg_method"] == method_name]
+#                 if len(reg_method_elements_list) == 0:
+#                     continue
+#                 label2values_dict[label] = np.array(reg_method_elements_list)
+#
+#             if len(label2values_dict) == 0:
+#                 continue
+#             printing_diagrams(label2values_dict,
+#                               f"Score: {stat_name} : {stat}",
+#                               f"Regularization of {method_name} method parameters",
+#                               stat_reg_method_stat_name_output_dir_path, dataset_name)
+#
+#     for stat_name, _ in calc_unique_feature_list:
+#         reg_method_stat_name_output_dir_path = reg_method_param_stat_name_output_dir_path / stat_name
+#         reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#         label2values_dict = dict()
+#         for label, values_list in reg_method_params_dict.items():
+#             label2values_dict[label] = np.array([x[stat_name] for x in values_list])
+#
+#         if len(label2values_dict) == 0:
+#             continue
+#         printing_diagrams(label2values_dict,
+#                           f"Score: {stat_name}",
+#                           f"Regularization of {method_name} method parameters",
+#                           reg_method_stat_name_output_dir_path, dataset_name)
+#
+# # prune_inner_method - labels - prune_inner_method
+# reg_method_output_path = output_path / "inner_method"
+# reg_method_params_dict = defaultdict(list)
+# for stat_elem in methods_stats_list:
+#     reg_method_params_dict[stat_elem["prune_inner_method"]].append(stat_elem)
+#
+# for stat_name, _ in calc_dict_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
+#         stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
+#         stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#
+#         label2values_dict = dict()
+#         for label, values_list in reg_method_params_dict.items():
+#             label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
+#
+#         if len(label2values_dict) == 0:
+#             continue
+#         printing_diagrams(label2values_dict,
+#                           f"Score: {stat_name} : {stat}",
+#                           "Prune inner methods",
+#                           stat_reg_method_stat_name_output_dir_path, dataset_name)
+#
+# for stat_name, _ in calc_unique_feature_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#     label2values_dict = dict()
+#     for label, values_list in reg_method_params_dict.items():
+#         label2values_dict[label] = np.array([x[stat_name] for x in values_list])
+#
+#     if len(label2values_dict) == 0:
+#         continue
+#     printing_diagrams(label2values_dict,
+#                       f"Score: {stat_name}",
+#                       "Prune inner methods",
+#                       reg_method_stat_name_output_dir_path, dataset_name)
+#
+# # prune_weight_method - labels - prune_weight_method
+# reg_method_output_path = output_path / "weight_method"
+# reg_method_params_dict = defaultdict(list)
+# for stat_elem in methods_stats_list:
+#     reg_method_params_dict[stat_elem["prune_weight_method"]].append(stat_elem)
+#
+# for stat_name, _ in calc_dict_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     for stat in ["stat_min", "stat_mean", "stat_max", "stat_disp", "stat_range"]:
+#         stat_reg_method_stat_name_output_dir_path = reg_method_stat_name_output_dir_path / stat
+#         stat_reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#
+#         label2values_dict = dict()
+#         for label, values_list in reg_method_params_dict.items():
+#             label2values_dict[label] = np.array([x[f"{stat_name}_{stat}"] for x in values_list])
+#
+#         if len(label2values_dict) == 0:
+#             continue
+#         printing_diagrams(label2values_dict,
+#                           f"Score: {stat_name} : {stat}",
+#                           "Prune weight methods",
+#                           stat_reg_method_stat_name_output_dir_path, dataset_name)
+#
+# for stat_name, _ in calc_unique_feature_list:
+#     reg_method_stat_name_output_dir_path = reg_method_output_path / stat_name
+#     reg_method_stat_name_output_dir_path.mkdir(exist_ok=True, parents=True)
+#     label2values_dict = dict()
+#     for label, values_list in reg_method_params_dict.items():
+#         label2values_dict[label] = np.array([x[stat_name] for x in values_list])
+#
+#     if len(label2values_dict) == 0:
+#         continue
+#     printing_diagrams(label2values_dict,
+#                       f"Score: {stat_name}",
+#                       "Prune weight methods",
+#                       reg_method_stat_name_output_dir_path, dataset_name)

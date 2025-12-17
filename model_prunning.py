@@ -12,8 +12,10 @@ from regularizations import filter_regularization_feature_from_weights, filter_r
     filter_regularization_feature_from_rademacher, filter_regularization_feature_from_entropy_inv, \
     filter_regularization_feature_from_rademacher_inv
 from src.brests_histopathology_dataset_loader import BreastHistCSTMDatasetCreator
+from src.cifar100_dataset_loader import Cifar100CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity, inner_data_entropy, inner_data_weights, \
-    inner_data_entropy_inv, rademacher_complexity_inv
+    inner_data_entropy_inv, rademacher_complexity_inv, neg_inner_data_weights
 from validation import validate_model
 
 # ("cifar10", Cifar10CSTMDatasetCreator, 10)
@@ -27,6 +29,7 @@ from validation import validate_model
 # ("vehicle", VehiclesCSTMDatasetCreator, 7)
 # ("tinyimagenet", TinyImagenetCSTMDatasetCreator, 200)
 # ("breast", BreastHistCSTMDatasetCreator, 2)
+# ("imagenet1k", Imagenet1kCSTMDatasetCreator, 1000)
 
 dataset_name = "breast"
 dataset_num_classes = 2
@@ -173,6 +176,7 @@ possible_drop = 0.0
 inner_regularization_functions = [
     ("none", None),
     ("weight", inner_data_weights),
+    ("new_weight", neg_inner_data_weights),
     ("entr", inner_data_entropy),
     ("entr-inv", inner_data_entropy_inv),
     ("radem", rademacher_complexity),
@@ -200,7 +204,7 @@ criterion = nn.CrossEntropyLoss()
 points_per_experiment = 3
 
 experiments_root_dir = Path("/media/kirrog/Expansion/models")
-experiments_list = list(experiments_root_dir.glob(f"*{dataset_name}*"))
+experiments_list = list(experiments_root_dir.glob(f"*{dataset_name}_*"))
 print(f"Experiments amount: {len(experiments_list)}")
 tasks = []
 possible_tasks = []
@@ -258,7 +262,7 @@ for (inner_regularization_function,
      weights_regularization_function,
      weights_regularization_name,
      experiment_output_path,
-     epoch_path) in tasks:
+     epoch_path) in tasks[240:]:
     search_by_prunning(criterion,
                        test_loader,
                        inner_regularization_function,

@@ -75,6 +75,14 @@ def inner_data_weights(inner_data):
     return mean_res
 
 
+def neg_inner_data_weights(inner_data):
+    dims2sum = list(range(len(inner_data.size())))[2:]
+    res = torch.sum(torch.abs(inner_data), dim=dims2sum)
+    res += torch.sum(inner_data ** 2, dim=dims2sum)
+    mean_res = torch.mean(res, dim=0)
+    return - mean_res
+
+
 def inner_data_weights_inv(inner_data):
     return -inner_data_weights(inner_data)
 

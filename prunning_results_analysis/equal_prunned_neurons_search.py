@@ -34,6 +34,8 @@ def pos2childs_forming(positions_list_data):
 
 for dataset_path in prunning_stats_path_dir.glob("*"):
     dataset_name = str(dataset_path.name)[:-16]
+    if dataset_name == "breast":
+        continue
     output_path_exp_dir = output_path / dataset_name
     for prunning_exp_dir in tqdm(list(dataset_path.glob("*")), desc=f"Processing: {dataset_name}"):
         regularization_method = str(prunning_exp_dir.name).split("__")[-2:]

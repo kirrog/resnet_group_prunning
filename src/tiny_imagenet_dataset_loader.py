@@ -195,11 +195,15 @@ def converting_archive2format():
         test_img_list.extend(l)
         test_label_ids_list.extend([label_id for x in range(len(l))])
 
-    numpy.save(output_path / "train_data.npy", numpy.stack(train_img_list))
-    numpy.save(output_path / "train_labels.npy", numpy.array(train_label_ids_list))
+    print(f"Train amount: {len(train_img_list)}")
+    print(f"Test amount: {len(test_img_list)}")
 
-    numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
-    numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
+
+    # numpy.save(output_path / "train_data.npy", numpy.stack(train_img_list))
+    # numpy.save(output_path / "train_labels.npy", numpy.array(train_label_ids_list))
+
+    # numpy.save(output_path / "test_data.npy", numpy.stack(test_img_list))
+    # numpy.save(output_path / "test_labels.npy", numpy.array(test_label_ids_list))
 
     valid_images_list = list((p / "archive/tiny-imagenet-200/val/images").glob("*.JPEG"))
     img_name2img_data = dict()
@@ -236,11 +240,13 @@ def converting_archive2format():
         valid_img_list.extend(img_list)
         valid_label_ids_list.extend([label_id for x in range(len(img_list))])
 
-    numpy.save(output_path / "valid_data.npy", numpy.stack(valid_img_list))
-    numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
+    print(f"Valid amount: {len(valid_img_list)}")
 
-    with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
-        json.dump(labels_ids, f, ensure_ascii=False)
+    # numpy.save(output_path / "valid_data.npy", numpy.stack(valid_img_list))
+    # numpy.save(output_path / "valid_labels.npy", numpy.array(valid_label_ids_list))
+
+    # with open(output_path / "label_name2label_id.json", "w", encoding="utf-8") as f:
+    #     json.dump(labels_ids, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":

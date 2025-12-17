@@ -11,8 +11,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from regularizations import *
-from src.brests_histopathology_dataset_loader import BreastHistCSTMDatasetCreator
 from src.dirs_struct import DirsStruct
+from src.imagenet1k_dataset_loader import Imagenet1kCSTMDatasetCreator
 from src.loggers import create_logger
 from src.model import ResNet, ResidualBlock
 from src.regularizator import Regularizator
@@ -164,7 +164,8 @@ dataset_list = [
     # ("houseplant", HousePlantCSTMDatasetCreator, 47)
     # ("vehicle", VehiclesCSTMDatasetCreator, 7)
     # ("tinyimagenet", TinyImagenetCSTMDatasetCreator, 200)
-    ("breast", BreastHistCSTMDatasetCreator, 2)
+    # ("breast", BreastHistCSTMDatasetCreator, 2)
+    ("imagenet1k", Imagenet1kCSTMDatasetCreator, 1000)
 ]
 
 filter_regularization_2coefs_losses_list = [
@@ -197,11 +198,13 @@ coefs1 = [
 # models_path = Path("/media/kirrog/data/data/fqwb_data/models")
 models_path = Path("/media/kirrog/Expansion/models")
 init_weights = [
-    ('none', None),
+    # ('none', None), # 9:
     # ('v1', models_path / "2025_04_05__16_07___bloodcells__none__none__/ep_018_acc_0.946041.bin"),  # V1
     # ('v1', models_path / "2025_05_06__15_27___breast__none__none__/ep_003_acc_0.856546.bin"),  # V1
+    # ('v1', models_path / "2025_06_05__01_08___imagenet1k__none__none__/ep_014_acc_0.359140.bin"),  # V1 #  25:
     # ('v2', models_path / "2025_04_05__16_16___bloodcells_long__none__none__/ep_333_acc_0.967742.bin")  # V2
     # ('v2', models_path / "2025_05_06__20_26___breast_long__none__none__/ep_002_acc_0.858780.bin")  # V2
+    ('v2', models_path / "2025_06_05__01_05___imagenet1k_long__none__none__/ep_019_acc_0.362200.bin")  # V2 # 25:
 ]
 
 experiments_list = []
@@ -210,7 +213,7 @@ loss_up_period = 5
 cut_worst_amount = 10
 for name, dataset_class_, num_classes_ in dataset_list:
     # experiment_name = (f"{name}__"
-    # experiment_name = (f"{name}_long__"
+    # # experiment_name = (f"{name}_long__"
     #                    f"none__"
     #                    f"none__")
     # experiment = [dataset_class_, experiment_name,
@@ -244,7 +247,7 @@ for name, dataset_class_, num_classes_ in dataset_list:
                               1e-8, True,
                               init_path]
                 experiments_list.append(experiment)
-experiments_list = experiments_list
+experiments_list = experiments_list[25:]
 
 pprint(experiments_list)
 print(f"Formed: {len(experiments_list)} experiments!")
