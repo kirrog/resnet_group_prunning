@@ -1,12 +1,14 @@
 import pickle
+import random
 from pathlib import Path
 
+import numpy as np
 import torch
 from torchsummary import summary
 from tqdm import tqdm
 
 from metrics import calc_metrics
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResNet, ResidualBlock
 
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
@@ -21,6 +23,18 @@ num_of_block_steps = 10
 num_of_filter_substeps = 10
 num_of_block_substeps = 10
 acceptable_loss_acc_value = 0.02
+
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+seed_everything()
 
 
 def get_new_model_instance():

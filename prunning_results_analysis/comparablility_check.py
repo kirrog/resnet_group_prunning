@@ -2,7 +2,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-prunning_stats_path_dir = Path("/home/kirrog/projects/FQWB/model")
+# prunning_stats_path_dir = Path("/home/kirrog/projects/FQWB/model")
+prunning_stats_path_dir = Path("/home/kirrog/projects/itmo/FQWB/model_ebm") 
 
 dataset_elements_set_list = []
 for dataset_dir_path in prunning_stats_path_dir.glob("*"):
@@ -31,5 +32,5 @@ for dataset_elements_set in dataset_elements_set_list:
         current_dataset_set = dataset_elements_set
     else:
         current_dataset_set = current_dataset_set.intersection(dataset_elements_set)
-with open("./results/experiment_hyperparameters2compare.json", "w", encoding="utf-8") as f:
+with open("./results/experiment_hyperparameters2compare_ebm.json", "w", encoding="utf-8") as f:
     json.dump(list(current_dataset_set), f, ensure_ascii=False)

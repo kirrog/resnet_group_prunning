@@ -2,8 +2,12 @@ import gc
 import math
 from functools import reduce
 
+import numpy
+import scipy.spatial.distance
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch._vmap_internals import vmap
 
 
 # @torch.jit.script
@@ -87,6 +91,10 @@ def inner_data_weights_inv(inner_data):
     return -inner_data_weights(inner_data)
 
 
+def bincount4vmap(feature_int_slice, num_of_districts=10000):
+    return torch.bincount(feature_int_slice, minlength=num_of_districts)[:num_of_districts]
+bincount4vmap_func = vmap(bincount4vmap)
+
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None, middle_channels=None, is_processing=False):
         super(ResidualBlock, self).__init__()
@@ -102,23 +110,49 @@ class ResidualBlock(nn.Module):
         self.downsample = downsample
         self.relu = nn.ReLU()
         self.out_channels = out_channels
+        self.inner_data_used = False
+        self.num_of_districts = 10000
         self.inner_data = []
+        self.inner_data_augmented = []
+        self.aug_processing = False
         self.process_data_number = 0
         self.is_processing = is_processing
         self.proc_func = inner_data_weights
         self.features_calced = 0.0
 
+    # x = (1024,64,8,8) out = (1024, 64, 8, 8) out - распределение Бернулли или Пуассона
     def forward(self, x):
         residual = x
         out = self.conv1(x)
         if self.is_processing:
             self.process_data_number += out.size()[0]
-            # feature = inner_data_processing(out, self.proc_func)
             feature = self.proc_func(out)
+            # feature = inner_data_processing(out, self.proc_func)
             if type(self.inner_data) is list:
-                self.inner_data = feature
+                self.inner_data = torch.zeros(
+                    (feature.size()[1], self.num_of_districts), dtype=torch.int, requires_grad=False).cuda()
+                self.inner_data_augmented = torch.zeros(
+                    (feature.size()[1], self.num_of_districts), dtype=torch.int, requires_grad=False).cuda()
+
+            feature_int = torch.floor(feature).int()
+            # for feature_i in range(feature_int.size()[1]):
+            #     base_onehot_encoded = torch.bincount(feature_int[:, feature_i], minlength=self.num_of_districts)[
+            #         :self.num_of_districts]
+            feature_int_redim = feature_int.movedim(1, 0)
+            base_onehot_encoded = bincount4vmap_func(feature_int_redim)
+            if not self.aug_processing:
+                self.inner_data += base_onehot_encoded
             else:
-                self.inner_data += feature
+                self.inner_data_augmented += base_onehot_encoded
+
+            # for feature_i in range(feature_int.size()[1]):
+            #     base_onehot_encoded = torch.bincount(feature_int[:, feature_i])
+            #     sum_size = min(self.inner_data.size()[1], len(base_onehot_encoded))
+            #     if not self.aug_processing:
+            #         self.inner_data[feature_i, :sum_size] += base_onehot_encoded[:sum_size]
+            #     else:
+            #         self.inner_data_augmented[feature_i, :sum_size] += base_onehot_encoded[:sum_size]
+
         # print(torch.mean(out))
         out = self.conv2(out)
         # print(torch.mean(out))
@@ -131,7 +165,40 @@ class ResidualBlock(nn.Module):
         return out
 
     def get_features(self):
-        return torch.tensor(self.inner_data) / self.process_data_number
+        base_dataset_mean_vector = []
+        base_dataset_variance_vector = []
+        energy_dataset_mean_vector = []
+        energy_dataset_variance_vector = []
+        jgd_values_list = []
+
+        for feature_i in range(self.inner_data.size()[0]):
+            base_probs_array = self.inner_data[feature_i]
+            base_probs_array_norm = base_probs_array / torch.sum(base_probs_array)
+            values_data = torch.arange(base_probs_array_norm.size()[0]).cuda()
+            base_dataset_mean = values_data * base_probs_array_norm
+            base_dataset_var = torch.sum(base_probs_array_norm * (values_data - base_dataset_mean) ** 2)
+            base_dataset_mean_vector.append(base_dataset_mean)
+            base_dataset_variance_vector.append(base_dataset_var)
+
+            energy_probs_array = self.inner_data_augmented[feature_i]
+            energy_probs_array_norm = energy_probs_array / torch.sum(energy_probs_array)
+            values_data = torch.arange(energy_probs_array_norm.size()[0]).cuda()
+            energy_dataset_mean = values_data * energy_probs_array_norm
+            energy_dataset_var = torch.sum(energy_probs_array_norm * (values_data - energy_dataset_mean) ** 2)
+            energy_dataset_mean_vector.append(energy_dataset_mean)
+            energy_dataset_variance_vector.append(energy_dataset_var)
+
+            jgd_value = scipy.spatial.distance.jensenshannon(base_probs_array.cpu(), energy_probs_array.cpu())
+            jgd_values_list.append(-jgd_value)
+
+        # features_tensor = torch.stack([
+        #     base_dataset_variance_vector,
+        #     base_dataset_mean_vector,
+        #     energy_dataset_variance_vector,
+        #     energy_dataset_mean_vector,
+        #     torch.tensor(jgd_values_list)])
+        # return features_tensor[4]
+        return torch.tensor(jgd_values_list).cpu()
 
 
 class ResNet(nn.Module):
@@ -595,6 +662,7 @@ class ResNet(nn.Module):
             self.layer2 = self.recreation_with_filter_lowest_delete(2, num2delete)
             self.layer3 = self.recreation_with_filter_lowest_delete(3, num2delete)
 
+    #
     def recreation_with_filter_lowest_feature_delete(self, number: int, num2delete, weights_func, device):
         assert 3 >= number >= 0
         with torch.no_grad():
@@ -639,7 +707,7 @@ class ResNet(nn.Module):
         size_value = 0
 
         features_of_inner_data = torch.zeros(input_conv_weight.size(0), device=device)
-        if type(seq.inner_data) is not list:
+        if seq.inner_data_used:
             features_of_inner_data = seq.get_features()
             features_of_inner_data -= torch.min(features_of_inner_data)
             max_feature_inner = float(torch.max(features_of_inner_data))

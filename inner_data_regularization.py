@@ -2,10 +2,11 @@ import pickle
 from pathlib import Path
 
 import torch
+from torch.utils.data import ConcatDataset
 from tqdm import tqdm
 
 from metrics import calc_metrics
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResNet, ResidualBlock
 
 aug_4_block_path = Path("/home/kirrog/projects/FQWB/model/aug_4_block")
@@ -37,7 +38,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
     model.eval()
     model = model.cuda()
     print("Init complete")
-    orig_metrics = calc_metrics(model, test_loader, device)
+    orig_metrics = calc_metrics(model, test_loader[0], device)
     acc_ = orig_metrics["acc"]
     print(f"Original acc: {acc_}")
     step_cuttings = []
@@ -46,10 +47,10 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
     for step in range(num_of_layers):
         model.process_dataset_with_inner_data_extraction(test_loader)
         print("Features processed")
-        all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_feature_delete(step, 1)
+        all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_feature_delete(step, 1) # DEPRICATED!!!
         print("First features deleted")
         model.eval()
-        exp_metrics = calc_metrics(model, test_loader, device)
+        exp_metrics = calc_metrics(model, test_loader[0], device)
         acc_ = exp_metrics["acc"]
         print(f"First result acc: {acc_}")
         acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
@@ -102,7 +103,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
                                                               recreation_with_filter_lowest_feature_delete(i, mid_num))
             results_cut.append((all_features, lowest_feature_value, size_value, mid_num, i))
     model.eval()
-    exp_metrics = calc_metrics(model, test_loader, device)
+    exp_metrics = calc_metrics(model, test_loader[0], device)
     result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut,
               "search": sub_step_cuttings_list, "mids": mids}
     acc_ = exp_metrics["acc"]
@@ -134,14 +135,19 @@ def iterate_through_hyperparams_lowest_entropy_delete(output_path: Path, batch_s
     # test_loader = data_loader(data_dir='./data',
     #                           batch_size=batch_size,
     #                           test=True)
-    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size)
-    test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
+    cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size, shuffle=False)
+    base_test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True,
+                                                              energy_test_transforms_bool=False)["test"]
+    energy_test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True,
+                                                                energy_test_transforms_bool=False)["test"]
+
     for hyper_param in hyperparams_list:
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
             print(f"Experiment: {exp.name}")
             output = output_path / hyper_param.name / exp.name
-            iterate_through_experiment_lowest_entropy_delete(exp, output, test_loader)
+            iterate_through_experiment_lowest_entropy_delete(exp, output, [base_test_loader,
+                                                                           energy_test_loader])
 
 
 if __name__ == "__main__":

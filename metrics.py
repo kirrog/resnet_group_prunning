@@ -6,7 +6,7 @@ import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, \
     confusion_matrix
 
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResNet, ResidualBlock
 
 
@@ -16,7 +16,7 @@ def calc_metrics(model: ResNet, dataset_loader, device):
     labeled_v = []
     time_all = 0
     with torch.no_grad():
-        for images, labels in dataset_loader:
+        for images, labels in dataset_loader[0]:
             time_local = time.time()
             images = images.to(device)
             labels = labels.to(device)

@@ -5,7 +5,7 @@ import torch
 from torchsummary import summary
 from tqdm import tqdm
 
-from src.dataset_loader import Cifar10CSTMDatasetCreator
+from src.cifar10_dataset_loader import Cifar10CSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity
 
 threshold = 32.0

@@ -8,9 +8,9 @@ from matplotlib.pyplot import figure
 from tqdm import tqdm
 
 figure(figsize=(8, 6), dpi=80)
-prunning_stats_path_dir = Path("/home/kirrog/projects/FQWB/model")
-output_path = Path("./results")
-with open("./results/experiment_hyperparameters2compare.json", "r", encoding="utf-8") as f:
+prunning_stats_path_dir = Path("/home/kirrog/projects/itmo/FQWB/model_ebm")
+output_path = Path("./results_ebm")
+with open("./results/experiment_hyperparameters2compare_ebm.json", "r", encoding="utf-8") as f:
     experiment_hyperparameters2compare_list = json.load(f)
 
 
@@ -225,13 +225,13 @@ def print_compare_diagram(output_path, dataset_name, diagram_name, all_dict, pru
         labels_list.append(key)
 
     ax.bar(labels_list, value_list, color=bar_colors)
-    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
 
     ax.set_ylabel('Доля успешных прореживаний')
     ax.set_title(f'{diagram_name}')
-    # ax.legend(title='Fruit color')
 
     plt.savefig(output_path / f"{dataset_name}.png")
+    with open(output_path / f"{dataset_name}.json", "w", encoding="utf-8") as f:
+        json.dump([labels_list, value_list, 'Доля успешных прореживаний', f'{diagram_name}'], f)
 
 
 for dataset_dir_path in prunning_stats_path_dir.glob("*"):
@@ -409,15 +409,14 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
     fig, ax = plt.subplots()
     bar_colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
     ax.bar(labels_list, value_list, color=bar_colors)
-    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
 
     ax.set_ylabel('Среднее число удаленных весов')
     ax.set_title(f'Сравнение оценок активаций')
-    # ax.legend(title='Fruit color')
 
     plt.savefig(reg_method_output_path / f"{dataset_name}.png")
     plt.close()
-
+    with open(reg_method_output_path / f"{dataset_name}.json", "w", encoding="utf-8") as f:
+        json.dump([labels_list, value_list, 'Среднее число удаленных весов', f'Сравнение оценок активаций'], f)
 
 
 
@@ -437,14 +436,14 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
     fig, ax = plt.subplots()
     bar_colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown"]
     ax.bar(labels_list, value_list, color=bar_colors)
-    # ax.bar(fruits, counts, label=bar_labels, color=bar_colors)
 
     ax.set_ylabel('Среднее число удаленных весов')
     ax.set_title(f'Сравнение оценок параметров')
-    # ax.legend(title='Fruit color')
 
     plt.savefig(reg_method_output_path / f"{dataset_name}.png")
     plt.close()
+    with open(reg_method_output_path / f"{dataset_name}.json", "w", encoding="utf-8") as f:
+        json.dump([labels_list, value_list, 'Среднее число удаленных весов', f'Сравнение оценок параметров'], f)
 
 
 
@@ -452,45 +451,45 @@ for dataset_dir_path in prunning_stats_path_dir.glob("*"):
 
 
 
-    # reg_method_dict_all = defaultdict(int)
-    # reg_method_dict_prunned = defaultdict(int)
-    # prune_inner_method_dict_all = defaultdict(int)
-    # prune_inner_method_dict_prunned = defaultdict(int)
-    # prune_weight_method_dict_all = defaultdict(int)
-    # prune_weight_method_dict_prunned = defaultdict(int)
-    #
-    # keys_ = set(method2prunned_amount.keys()).union(set(method2all_amount.keys()))
-    #
-    # for key in keys_:
-    #     reg_method, prune_inner_method_, prune_weight_method_ = key.split("___")
-    #
-    #     reg_method_dict_all[reg_method] += method2all_amount[key]
-    #     prune_inner_method_dict_all[prune_inner_method_] += method2all_amount[key]
-    #     prune_weight_method_dict_all[prune_weight_method_] += method2all_amount[key]
-    #
-    #     reg_method_dict_prunned[reg_method] += method2prunned_amount[key]
-    #     prune_inner_method_dict_prunned[prune_inner_method_] += method2prunned_amount[key]
-    #     prune_weight_method_dict_prunned[prune_weight_method_] += method2prunned_amount[key]
-    #
-    # ratio_output_path = output_path / "acc_agreg"
-    #
-    # reg_method_ratio_output_path = ratio_output_path / "reg_method"
-    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
-    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение регуляризаций",
-    #                       reg_method_dict_all,
-    #                       reg_method_dict_prunned)
-    #
-    # reg_method_ratio_output_path = ratio_output_path / "prune_inner"
-    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
-    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок активаций",
-    #                       prune_inner_method_dict_all,
-    #                       prune_inner_method_dict_prunned)
-    #
-    # reg_method_ratio_output_path = ratio_output_path / "prune_weight"
-    # reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
-    # print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок параметров",
-    #                       prune_weight_method_dict_all,
-    #                       prune_weight_method_dict_prunned)
+    reg_method_dict_all = defaultdict(int)
+    reg_method_dict_prunned = defaultdict(int)
+    prune_inner_method_dict_all = defaultdict(int)
+    prune_inner_method_dict_prunned = defaultdict(int)
+    prune_weight_method_dict_all = defaultdict(int)
+    prune_weight_method_dict_prunned = defaultdict(int)
+
+    keys_ = set(method2prunned_amount.keys()).union(set(method2all_amount.keys()))
+
+    for key in keys_:
+        reg_method, prune_inner_method_, prune_weight_method_ = key.split("___")
+
+        reg_method_dict_all[reg_method] += method2all_amount[key]
+        prune_inner_method_dict_all[prune_inner_method_] += method2all_amount[key]
+        prune_weight_method_dict_all[prune_weight_method_] += method2all_amount[key]
+
+        reg_method_dict_prunned[reg_method] += method2prunned_amount[key]
+        prune_inner_method_dict_prunned[prune_inner_method_] += method2prunned_amount[key]
+        prune_weight_method_dict_prunned[prune_weight_method_] += method2prunned_amount[key]
+
+    ratio_output_path = output_path / "acc_agreg"
+
+    reg_method_ratio_output_path = ratio_output_path / "reg_method"
+    reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение регуляризаций",
+                          reg_method_dict_all,
+                          reg_method_dict_prunned)
+
+    reg_method_ratio_output_path = ratio_output_path / "prune_inner"
+    reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок активаций",
+                          prune_inner_method_dict_all,
+                          prune_inner_method_dict_prunned)
+
+    reg_method_ratio_output_path = ratio_output_path / "prune_weight"
+    reg_method_ratio_output_path.mkdir(exist_ok=True, parents=True)
+    print_compare_diagram(reg_method_ratio_output_path, dataset_name, "Сравнение оценок параметров",
+                          prune_weight_method_dict_all,
+                          prune_weight_method_dict_prunned)
 
 # print(f"Processed counter: {processed_counter}")
 # # reg_method - labels - reg_method

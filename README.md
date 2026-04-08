@@ -46,3 +46,9 @@
  +cifar100     | https://docs.pytorch.org/vision/main/generated/torchvision.datasets.CIFAR100.html                | 32x32     | 100            | 60000      
  +tinyimagenet | https://www.kaggle.com/datasets/akash2sharma/tiny-imagenet                                       | 64x64     | 200            | 110000     
  imagenet1k    | https://www.kaggle.com/datasets/sautkin/imagenet1k0/data                                         | 9331x6530 | 1000           | 1330297    
+
+Для построения графиков:
+1) prunning_results_analysis/comparability_check.py
+2) prunning_results_analysis/stats_comparer.py
+3) prunning_results_analysis/merge_plots.py
+

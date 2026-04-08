@@ -37,30 +37,42 @@ class Cifar100CSTMDatasetCreator:
         self.image_size = image_size
         logger.info("Cifar100DataCreator init")
 
-    def create_loaders(self, create_test_dataloader: bool = False) -> Dict[str, torch.utils.data.DataLoader]:
+    def create_loaders(self, create_test_dataloader: bool = False, energy_test_transforms_bool: bool = False) -> Dict[str, torch.utils.data.DataLoader]:
         logger.info(f"Create dataloader: is_test:{create_test_dataloader}")
         normalize = transforms.Normalize(
             mean=[0.4914, 0.4822, 0.4465],
             std=[0.2023, 0.1994, 0.2010],
         )
+        # noise_transformation = transforms.GaussianBlur(1, 0.5)
+        noise_transformation = transforms.Lambda(
+            lambda x: abs(x + (torch.empty(x.size()).normal_(0.0, 0.1) / 20.0)))
 
         # define transforms
-        transform = transforms.Compose([
+        test_transform = transforms.Compose([
             transforms.ToTensor(),
             normalize,
+        ])
+
+        energy_transform = transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+            noise_transformation
         ])
 
         train_transform = transforms.Compose([
             transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            normalize,
+            normalize
         ])
 
         if create_test_dataloader:
+            choosen_test_transforms = test_transform
+            if energy_test_transforms_bool:
+                choosen_test_transforms = energy_transform
             dataset = datasets.CIFAR100(
                 root=self.data_dir, train=False,
-                download=True, transform=transform,
+                download=True, transform=choosen_test_transforms,
             )
 
             data_loader = torch.utils.data.DataLoader(
