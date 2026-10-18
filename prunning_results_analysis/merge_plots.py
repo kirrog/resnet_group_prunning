@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 results_path = list(Path("./results/acc_agreg").glob("*/*.json"))
 results_ebm_path = list(Path("./results_ebm/acc_agreg").glob("*/*.json"))
-output_path = Path("./results_merged")
+output_path = Path("./results_merged_eng")
 
 type_name2dict = defaultdict(list)
 for res_p in results_path:
@@ -20,8 +20,9 @@ for res_p in results_ebm_path:
 labels_names_list = ["L1_L2", "default", "neg_entr", "ebm"]
 
 for type_name, paths_list in type_name2dict.items():
+    print(f"Type: {type_name}\n" + "_"*25)
     output_path_dir = output_path / type_name
-    output_path_dir.mkdir(exist_ok=True, parents=True)
+    # output_path_dir.mkdir(exist_ok=True, parents=True)
     dataset_name2paths_list = defaultdict(list)
     for path_ in paths_list:
         dataset_name2paths_list[str(path_.name)].append(path_)
@@ -47,10 +48,21 @@ for type_name, paths_list in type_name2dict.items():
                 i = labels_list.index(label_name)
                 founded_values.append(values_list[i])
         # ax.bar(labels_list, values_list, color=bar_colors)
-        ax.bar(labels_names_new_list, founded_values, color=bar_colors)
+        print(dataset_name)
+        print(labels_names_new_list)
+        print(founded_values)
 
-        ax.set_ylabel(ylabel_)
-        ax.set_title(title_)
-
-        plt.savefig(output_plot_path)
-        plt.close()
+        # ax.bar(labels_names_new_list, founded_values, color=bar_colors)
+        #
+        # if ylabel_ == "Доля успешных прореживаний":
+        #     ylabel_ = 'Success pruning ratio'
+        # if ylabel_ == "Среднее число удаленных весов":
+        #     ylabel_ = "Mean deleted weights amount"
+        # if title_ == "Сравнение оценок активаций":
+        #     title_ = "Methods comparison"
+        #
+        # ax.set_ylabel(ylabel_)
+        # ax.set_title(title_)
+        #
+        # plt.savefig(output_plot_path)
+        # plt.close()

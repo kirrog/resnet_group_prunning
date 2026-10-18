@@ -52,3 +52,4 @@
 2) prunning_results_analysis/stats_comparer.py
 3) prunning_results_analysis/merge_plots.py
 
+Размер нейронной сети в случае размера входа (3, 32, 32) = 15 013 224

@@ -20,8 +20,10 @@ from src.crop_disease_dataset_loader import CropDiseaseCSTMDatasetCreator
 from src.flowers_dataset_loader import FlowersCSTMDatasetCreator
 from src.fourniture_dataset_loader import FournitureCSTMDatasetCreator
 from src.house_plant_dataset_loader import HousePlantCSTMDatasetCreator
+from src.imagenet1k_dataset_loader import Imagenet1kCSTMDatasetCreator
 from src.model import ResidualBlock, ResNet, rademacher_complexity, inner_data_entropy, inner_data_weights, \
     inner_data_entropy_inv, rademacher_complexity_inv, neg_inner_data_weights
+from src.tiny_imagenet_dataset_loader import TinyImagenetCSTMDatasetCreator
 from src.vehicles_dataset_loader import VehiclesCSTMDatasetCreator
 from validation import validate_model
 
@@ -38,9 +40,9 @@ from validation import validate_model
 # ("breast", BreastHistCSTMDatasetCreator, 2)
 # ("imagenet1k", Imagenet1kCSTMDatasetCreator, 1000)
 
-dataset_name = "flowers"
-dataset_num_classes = 5
-dataset_creator_class = FlowersCSTMDatasetCreator
+dataset_name = "imagenet1k"
+dataset_num_classes = 1000
+dataset_creator_class = Imagenet1kCSTMDatasetCreator
 
 
 def init_model(mode_path: Path, num_classes):

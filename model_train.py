@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim
 from torch.optim import Optimizer
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 from tqdm import tqdm
 
 from regularizations import *
