@@ -40,9 +40,9 @@ from validation import validate_model
 # ("breast", BreastHistCSTMDatasetCreator, 2)
 # ("imagenet1k", Imagenet1kCSTMDatasetCreator, 1000)
 
-dataset_name = "imagenet1k"
-dataset_num_classes = 1000
-dataset_creator_class = Imagenet1kCSTMDatasetCreator
+dataset_name = "cifar10"
+dataset_creator_class = Cifar10CSTMDatasetCreator
+dataset_num_classes = 10
 
 
 def init_model(mode_path: Path, num_classes):
@@ -194,25 +194,22 @@ def search_by_prunning(criterion,
 possible_drop = 0.0
 
 
-# inner_regularization_functions = [
-#     ("none", None),
-#     ("weight", inner_data_weights),
-#     ("new_weight", neg_inner_data_weights),
-#     ("entr", inner_data_entropy),
-#     ("entr-inv", inner_data_entropy_inv),
-#     ("radem", rademacher_complexity),
-#     ("radem-inv", rademacher_complexity_inv)
-# ]
-
-
-def ebm_stub(inner_data):
+def shannon_stub(inner_data):
     dims2sum = list(range(len(inner_data.size())))[2:]  # get 2 last dums
     res = torch.sum(torch.abs(inner_data), dim=dims2sum)
     return res
 
 
 inner_regularization_functions = [
-    ("ebm", ebm_stub),
+    # ("none", None),
+    # ("ebm", ebm_stub),
+    ("shannon", shannon_stub),
+    # ("weight", inner_data_weights),
+    # ("new_weight", neg_inner_data_weights),
+    #     ("entr", inner_data_entropy),
+    #     ("entr-inv", inner_data_entropy_inv),
+    #     ("radem", rademacher_complexity),
+    #     ("radem-inv", rademacher_complexity_inv)
 ]
 
 weights_regularization_functions = [

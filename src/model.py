@@ -3,7 +3,7 @@ import math
 from functools import reduce
 
 import numpy
-import scipy.spatial.distance
+import scipy.stats
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -113,8 +113,6 @@ class ResidualBlock(nn.Module):
         self.inner_data_used = False
         self.num_of_districts = 10000
         self.inner_data = []
-        self.inner_data_augmented = []
-        self.aug_processing = False
         self.process_data_number = 0
         self.is_processing = is_processing
         self.proc_func = inner_data_weights
@@ -131,8 +129,6 @@ class ResidualBlock(nn.Module):
             if type(self.inner_data) is list:
                 self.inner_data = torch.zeros(
                     (feature.size()[1], self.num_of_districts), dtype=torch.int, requires_grad=False).cuda()
-                self.inner_data_augmented = torch.zeros(
-                    (feature.size()[1], self.num_of_districts), dtype=torch.int, requires_grad=False).cuda()
 
             feature_int = torch.floor(feature).int()
             # for feature_i in range(feature_int.size()[1]):
@@ -140,18 +136,7 @@ class ResidualBlock(nn.Module):
             #         :self.num_of_districts]
             feature_int_redim = feature_int.movedim(1, 0)
             base_onehot_encoded = bincount4vmap_func(feature_int_redim)
-            if not self.aug_processing:
-                self.inner_data += base_onehot_encoded
-            else:
-                self.inner_data_augmented += base_onehot_encoded
-
-            # for feature_i in range(feature_int.size()[1]):
-            #     base_onehot_encoded = torch.bincount(feature_int[:, feature_i])
-            #     sum_size = min(self.inner_data.size()[1], len(base_onehot_encoded))
-            #     if not self.aug_processing:
-            #         self.inner_data[feature_i, :sum_size] += base_onehot_encoded[:sum_size]
-            #     else:
-            #         self.inner_data_augmented[feature_i, :sum_size] += base_onehot_encoded[:sum_size]
+            self.inner_data += base_onehot_encoded
 
         # print(torch.mean(out))
         out = self.conv2(out)
@@ -165,40 +150,12 @@ class ResidualBlock(nn.Module):
         return out
 
     def get_features(self):
-        base_dataset_mean_vector = []
-        base_dataset_variance_vector = []
-        energy_dataset_mean_vector = []
-        energy_dataset_variance_vector = []
-        jgd_values_list = []
-
+        shannon_entropy_values_list = []
         for feature_i in range(self.inner_data.size()[0]):
             base_probs_array = self.inner_data[feature_i]
-            base_probs_array_norm = base_probs_array / torch.sum(base_probs_array)
-            values_data = torch.arange(base_probs_array_norm.size()[0]).cuda()
-            base_dataset_mean = values_data * base_probs_array_norm
-            base_dataset_var = torch.sum(base_probs_array_norm * (values_data - base_dataset_mean) ** 2)
-            base_dataset_mean_vector.append(base_dataset_mean)
-            base_dataset_variance_vector.append(base_dataset_var)
-
-            energy_probs_array = self.inner_data_augmented[feature_i]
-            energy_probs_array_norm = energy_probs_array / torch.sum(energy_probs_array)
-            values_data = torch.arange(energy_probs_array_norm.size()[0]).cuda()
-            energy_dataset_mean = values_data * energy_probs_array_norm
-            energy_dataset_var = torch.sum(energy_probs_array_norm * (values_data - energy_dataset_mean) ** 2)
-            energy_dataset_mean_vector.append(energy_dataset_mean)
-            energy_dataset_variance_vector.append(energy_dataset_var)
-
-            jgd_value = scipy.spatial.distance.jensenshannon(base_probs_array.cpu(), energy_probs_array.cpu())
-            jgd_values_list.append(-jgd_value)
-
-        # features_tensor = torch.stack([
-        #     base_dataset_variance_vector,
-        #     base_dataset_mean_vector,
-        #     energy_dataset_variance_vector,
-        #     energy_dataset_mean_vector,
-        #     torch.tensor(jgd_values_list)])
-        # return features_tensor[4]
-        return torch.tensor(jgd_values_list).cpu()
+            entropy_value = scipy.stats.entropy(base_probs_array.cpu())
+            shannon_entropy_values_list.append(entropy_value)
+        return torch.tensor(shannon_entropy_values_list).cpu()
 
 
 class ResNet(nn.Module):
