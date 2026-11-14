@@ -16,7 +16,7 @@ def calc_metrics(model: ResNet, dataset_loader, device):
     labeled_v = []
     time_all = 0
     with torch.no_grad():
-        for images, labels in dataset_loader[0]:
+        for images, labels in dataset_loader:
             time_local = time.time()
             images = images.to(device)
             labels = labels.to(device)

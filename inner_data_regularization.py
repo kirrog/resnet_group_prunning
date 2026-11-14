@@ -38,7 +38,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
     model.eval()
     model = model.cuda()
     print("Init complete")
-    orig_metrics = calc_metrics(model, test_loader[0], device)
+    orig_metrics = calc_metrics(model, test_loader, device)
     acc_ = orig_metrics["acc"]
     print(f"Original acc: {acc_}")
     step_cuttings = []
@@ -50,7 +50,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
         all_features, lowest_feature_value, size_value = model.recreation_with_filter_lowest_feature_delete(step, 1) # DEPRICATED!!!
         print("First features deleted")
         model.eval()
-        exp_metrics = calc_metrics(model, test_loader[0], device)
+        exp_metrics = calc_metrics(model, test_loader, device)
         acc_ = exp_metrics["acc"]
         print(f"First result acc: {acc_}")
         acc_drop = max((orig_metrics["acc"] - exp_metrics["acc"]), 0.000000001)
@@ -103,7 +103,7 @@ def experiment_on_model_with_lowest_filter_entropy(model_path: Path, test_loader
                                                               recreation_with_filter_lowest_feature_delete(i, mid_num))
             results_cut.append((all_features, lowest_feature_value, size_value, mid_num, i))
     model.eval()
-    exp_metrics = calc_metrics(model, test_loader[0], device)
+    exp_metrics = calc_metrics(model, test_loader, device)
     result = {"exp_metrics": exp_metrics, "acc_pool": acc_pool, "results_cut": results_cut,
               "search": sub_step_cuttings_list, "mids": mids}
     acc_ = exp_metrics["acc"]
@@ -136,18 +136,14 @@ def iterate_through_hyperparams_lowest_entropy_delete(output_path: Path, batch_s
     #                           batch_size=batch_size,
     #                           test=True)
     cifar10_dataset_creator = Cifar10CSTMDatasetCreator(batch_size=batch_size, shuffle=False)
-    base_test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True,
-                                                              energy_test_transforms_bool=False)["test"]
-    energy_test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True,
-                                                                energy_test_transforms_bool=False)["test"]
+    base_test_loader = cifar10_dataset_creator.create_loaders(create_test_dataloader=True)["test"]
 
     for hyper_param in hyperparams_list:
         print(f"Work with hyperparams: {hyper_param.name}")
         for exp in hyper_param.glob("*"):
             print(f"Experiment: {exp.name}")
             output = output_path / hyper_param.name / exp.name
-            iterate_through_experiment_lowest_entropy_delete(exp, output, [base_test_loader,
-                                                                           energy_test_loader])
+            iterate_through_experiment_lowest_entropy_delete(exp, output, base_test_loader)
 
 
 if __name__ == "__main__":

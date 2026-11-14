@@ -32,17 +32,20 @@ from validation import validate_model
 # ("butterfly", BatterflyCSTMDatasetCreator, 75)
 # ("bloodcells", BloodCellsCSTMDatasetCreator, 8)
 # ("crop", CropDiseaseCSTMDatasetCreator, 22)
+
 # ("flowers", FlowersCSTMDatasetCreator, 5)
+
 # ("fourniture", FournitureCSTMDatasetCreator, 32)
 # ("houseplant", HousePlantCSTMDatasetCreator, 47)
+
 # ("vehicle", VehiclesCSTMDatasetCreator, 7)
 # ("tinyimagenet", TinyImagenetCSTMDatasetCreator, 200)
 # ("breast", BreastHistCSTMDatasetCreator, 2)
 # ("imagenet1k", Imagenet1kCSTMDatasetCreator, 1000)
 
-dataset_name = "cifar10"
-dataset_creator_class = Cifar10CSTMDatasetCreator
-dataset_num_classes = 10
+dataset_name = "butterfly"
+dataset_creator_class = BatterflyCSTMDatasetCreator
+dataset_num_classes = 75
 
 
 def init_model(mode_path: Path, num_classes):
@@ -63,22 +66,14 @@ def validate_and_calc_features_model(model, reg_func, test_loader, device, crite
                 del seq.inner_data
                 gc.collect()
                 seq.inner_data = []
-                seq.inner_data_augmented = []
                 seq.inner_data_used = True
-                seq.aug_processing = False
 
     acc, loss = validate_model(model, list(test_loader[0]), device, criterion)
-    if reg_func is not None:
-        for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
-            for seq in l:
-                seq.aug_processing = True
-    acc_of_aug, loss_of_aug = validate_model(model, list(test_loader[1]), device, criterion)
 
     if reg_func is not None:
         for l in [model.layer0, model.layer1, model.layer2, model.layer3]:
             for seq in l:
                 seq.is_processing = False
-                seq.aug_processing = False
     return acc, loss
 
 
@@ -223,7 +218,7 @@ weights_regularization_functions = [
 
 init_step_sizes = [1, 1, 8, 8]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-output_path = Path(f"./model_ebm/{dataset_name}_v1_pos_drop_{possible_drop}")
+output_path = Path(f"/media/kirrog/data/data/fqwb_data/model_shannon/{dataset_name}_v1_pos_drop_{possible_drop}")
 output_path.mkdir(parents=True, exist_ok=True)
 
 dataset_creator = dataset_creator_class()
